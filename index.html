@@ -242,7 +242,7 @@ async function startChild(){
   const pc=await createPeer('child'); stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
-  const offer=await pc.createOffer(); await pc.setLocalDescription(offer); await set(ref(state.db,`babyMonitor/${state.room}/offer`), offer.toJSON());
+  const offer=await pc.createOffer(); await pc.setLocalDescription(offer); await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
   $('connChild').textContent='Místnost vytvořena. Opiš kód do rodičovského telefonu: '+state.room; log('childLog','Dětská jednotka spuštěna.');
 }
 async function joinParent(){
@@ -251,7 +251,7 @@ async function joinParent(){
   const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
   mic.getTracks().forEach(t=>pc.addTrack(t,mic)); state.localStream=mic;
   const offerSnap = await new Promise(resolve=>{ const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{ if(s.val()){ off(); resolve(s); } }); });
-  await pc.setRemoteDescription(offerSnap.val()); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); await set(ref(state.db,`babyMonitor/${state.room}/answer`), answer.toJSON());
+  await pc.setRemoteDescription(offerSnap.val()); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/child`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('parentLog','ICE child chyba: '+e.message); } });
   onValue(ref(state.db,`babyMonitor/${state.room}/status`), snap=>{ const s=snap.val(); if(s) updateParentStatus(s); });
   log('parentLog','Rodič připojen k místnosti '+state.room+'.');
