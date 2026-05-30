@@ -58,9 +58,10 @@
     <b>Bezpečnost:</b> tohle nenahrazuje certifikovanou dětskou chůvičku. Nechávej telefon mimo dosah dítěte, ne u hlavy, ideálně v nabíječce a s vypnutým uspáváním obrazovky.
   </div>
 
+  
 
   <section class="card">
-    <h2>1) Režim</h2>
+    <h2>2) Režim</h2>
     <div class="tabs">
       <button id="childTab" class="tab active">👶 Dítě</button>
       <button id="parentTab" class="tab">👂 Rodič</button>
@@ -144,7 +145,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase, ref, set, update, onValue, push, onChildAdded, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
+const $ = id => document.getElementById(id);
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false };
+const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
+function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
+function clsStatus(el, st){ el.className='bigStatus '+(st==='cry'?'cry':st==='suspect'?'suspect':'quiet'); }
+function roomCode(){ return String(Math.floor(10000+Math.random()*90000)); }
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDs3JXVEver-fNjWINC_L2kMg9JoBCOtkw",
   authDomain: "chuvicka-87e23.firebaseapp.com",
@@ -154,15 +161,9 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "916750222483",
   appId: "1:916750222483:web:4b365e79b27f3eba207966"
 };
-
-const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false };
-const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
-
-function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
-function clsStatus(el, st){ el.className='bigStatus '+(st==='cry'?'cry':st==='suspect'?'suspect':'quiet'); }
-function roomCode(){ return String(Math.floor(10000+Math.random()*90000)); }
-function initFirebase(){ if(state.db) return state.db; state.app=initializeApp(FIREBASE_CONFIG); state.db=getDatabase(state.app); return state.db; }
+function loadCfg(){}
+function parseCfg(){ return FIREBASE_CONFIG; }
+function initFirebase(){ if(state.db) return state.db; const cfg=parseCfg(); state.app=initializeApp(cfg); state.db=getDatabase(state.app); return state.db; }
 function setMode(mode){ state.mode=mode; $('childTab').classList.toggle('active',mode==='child'); $('parentTab').classList.toggle('active',mode==='parent'); $('childPanel').classList.toggle('hidden',mode!=='child'); $('parentPanel').classList.toggle('hidden',mode!=='parent'); }
 function statusText(st){ return st==='cry'?'PLÁČ':st==='suspect'?'PODEZŘENÍ':'KLID'; }
 
@@ -258,14 +259,16 @@ async function joinParent(){
 function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
 function alarm(){ const mode=$('alarmMode').value; if(mode==='vibrate'||mode==='both') navigator.vibrate?.([300,150,300,150,600]); if(mode==='beep'||mode==='both') beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
-function stopAll(){ cancelAnimationFrame(state.loop); state.localStream?.getTracks().forEach(t=>t.stop()); state.pc?.close(); state.noiseNode?.stop?.(); state.audioCtx?.close?.(); state.pc=null; state.localStream=null; state.audioCtx=null; $('connChild').textContent='Zastaveno.'; $('parentInfo').textContent='Odpojeno.'}
+function stopAll(){ cancelAnimationFrame(state.loop); state.localStream?.getTracks().forEach(t=>t.stop()); state.pc?.close(); state.noiseNode?.stop?.(); state.audioCtx?.close?.(); state.pc=null; state.localStream=null; state.audioCtx=null; $('connChild').textContent='Zastaveno.'; $('parentInfo').textContent='Odpojeno.'; }
 
-$('themeBtn').onclick=()=>{ const dark=document.body.dataset.theme!=='dark'; document.body.dataset.theme=dark?'dark':'light'; $('themeBtn').textContent=dark?'☀️':'🌙'; }; $('firebaseConfig').value=''; };
+$('themeBtn').onclick=()=>{ const dark=document.body.dataset.theme!=='dark'; document.body.dataset.theme=dark?'dark':'light'; $('themeBtn').textContent=dark?'☀️':'🌙'; };
+
+
 $('childTab').onclick=()=>setMode('child'); $('parentTab').onclick=()=>setMode('parent'); $('newRoom').onclick=()=>$('childRoom').value=roomCode();
 $('startChild').onclick=()=>startChild().catch(e=>{ alert(e.message); log('childLog','Chyba: '+e.message); });
 $('calibrateBtn').onclick=()=>{ if(state.analyser) startCalibration(); };
 $('stopChild').onclick=stopAll; $('joinParent').onclick=()=>joinParent().catch(e=>{ alert(e.message); log('parentLog','Chyba: '+e.message); }); $('stopParent').onclick=stopAll; $('testAlarm').onclick=alarm;
-$('childRoom').value=roomCode();
+loadCfg(); $('childRoom').value=roomCode();
 </script>
 </body>
 </html>
