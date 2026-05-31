@@ -45,6 +45,27 @@
   </style>
 
 <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#101510">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+
+<style>
+  #blackScreenBtn{
+    position:fixed;right:12px;bottom:12px;z-index:9998;
+    border:0;border-radius:999px;padding:10px 13px;
+    background:#111;color:#fff;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  #blackScreenOverlay{
+    display:none;position:fixed;inset:0;z-index:99999;background:#000;
+    cursor:pointer;
+  }
+  #keepAliveVideo{
+    position:fixed;left:0;bottom:0;width:1px;height:1px;
+    opacity:.01;pointer-events:none;z-index:-1;
+  }
+</style>
+
 </head>
 <body data-theme="light">
 <div class="wrap">
@@ -466,6 +487,7 @@ async function stopAll(){
   state.noiseGain=null;
   state.childOwnsRoom=false;
   state.disconnectRef=null;
+  const kav=document.getElementById('keepAliveVideo'); if(kav){ try{kav.pause(); kav.currentTime=0;}catch(e){} }
   $('connChild').textContent='Zastaveno.';
   $('parentInfo').textContent='Odpojeno.';
 }
@@ -481,35 +503,65 @@ loadCfg(); $('childRoom').value=roomCode(); updateDetectorInfo();
 </script>
 
 <script>
-let wakeLock=null;
-async function requestWakeLock(){
- try{
-  if('wakeLock' in navigator){
-   wakeLock=await navigator.wakeLock.request('screen');
+let keepAliveVideoStarted = false;
+
+async function startKeepAliveVideo(){
+  const video = document.getElementById("keepAliveVideo");
+  if(!video) return;
+  try{
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    await video.play();
+    keepAliveVideoStarted = true;
+  }catch(e){
+    console.warn("1px video se nepodařilo spustit:", e);
   }
- }catch(e){}
 }
 
-document.addEventListener('click',()=>requestWakeLock(),{once:true});
+function setupBlackScreen(){
+  if(document.getElementById("blackScreenOverlay")) return;
 
-window.addEventListener('load',()=>{
- const b=document.createElement('button');
- b.textContent='Zhasnout obrazovku';
- b.style.position='fixed';
- b.style.right='10px';
- b.style.bottom='10px';
- b.style.zIndex='9999';
- document.body.appendChild(b);
+  const video = document.createElement("video");
+  video.id = "keepAliveVideo";
+  video.src = "keepalive.mp4";
+  video.muted = true;
+  video.loop = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline","");
+  video.setAttribute("webkit-playsinline","");
+  document.body.appendChild(video);
 
- const overlay=document.createElement('div');
- overlay.style.cssText='display:none;position:fixed;inset:0;background:black;z-index:99999;';
- document.body.appendChild(overlay);
+  const btn = document.createElement("button");
+  btn.id = "blackScreenBtn";
+  btn.type = "button";
+  btn.textContent = "Černá obrazovka";
+  document.body.appendChild(btn);
 
- b.onclick=()=>overlay.style.display='block';
- overlay.onclick=()=>overlay.style.display='none';
-});
-if('serviceWorker' in navigator){
- navigator.serviceWorker.register('./service-worker.js');
+  const overlay = document.createElement("div");
+  overlay.id = "blackScreenOverlay";
+  overlay.title = "Klepnutím se vrátíš do aplikace";
+  document.body.appendChild(overlay);
+
+  btn.addEventListener("click", async () => {
+    await startKeepAliveVideo();
+    overlay.style.display = "block";
+  });
+
+  overlay.addEventListener("click", () => {
+    overlay.style.display = "none";
+  });
+
+  document.addEventListener("click", () => startKeepAliveVideo(), { once:true });
+}
+
+window.addEventListener("load", setupBlackScreen);
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(console.warn);
+  });
 }
 </script>
 
