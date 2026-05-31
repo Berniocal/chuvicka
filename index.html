@@ -61,7 +61,7 @@
   
 
   <section class="card">
-    <h2>2) Režim</h2>
+    <h2>1) Režim</h2>
     <div class="tabs">
       <button id="childTab" class="tab active">👶 Dítě</button>
       <button id="parentTab" class="tab">👂 Rodič</button>
@@ -77,7 +77,20 @@
       </div>
       <div>
         <label>Typ šumu</label>
-        <select id="noiseType"><option value="pink">Růžový šum – příjemnější</option><option value="brown">Hnědý šum – hlubší</option><option value="white">Bílý šum – ostřejší</option></select>
+        <select id="noiseType">
+          <option value="white">Bílý šum ⚪️</option>
+          <option value="pink" selected>Růžový šum 🟣</option>
+          <option value="brown">Hnědý šum 🟤</option>
+          <option value="waterfall">Vodopád</option>
+          <option value="waterfall_real">Vodopády (real)</option>
+          <option value="sea_real">Moře (real) 🌊</option>
+          <option value="wind_real">Vítr (real) 💨</option>
+          <option value="rain_real">Déšť (real) 🌧️</option>
+          <option value="rain">Déšť 🌧️</option>
+          <option value="wind">Vítr 💨</option>
+          <option value="fan">Ventilátor 💿</option>
+          <option value="vacuum">Vysavač</option>
+        </select>
       </div>
     </div>
     <div class="grid3" style="margin-top:12px">
@@ -135,7 +148,7 @@
         <li>Vytvoř Firebase Realtime Database a do pravidel pro testování dej dočasně čtení/zápis pro místnosti, které používáš.</li>
         <li>Na dětském telefonu zvol režim Dítě, vytvoř místnost a spusť jednotku. Prvních 10 sekund nech místnost v klidu – učí se šum.</li>
         <li>Na rodičovském telefonu zvol Rodič, opiš kód a připoj se.</li>
-        <li>Telefon u dítěte nech v nabíječce, se zapnutou obrazovkou nebo nastavením proti uspání.</li><li>Tlačítko Stop smaže místnost z Firebase. Když dětský telefon ztratí internet nebo zavře stránku, Firebase ji smaže automaticky přes onDisconnect.</li>
+        <li>Telefon u dítěte nech v nabíječce, se zapnutou obrazovkou nebo nastavením proti uspání.</li><li>Tlačítko Stop smaže místnost z Firebase. Když dětský telefon ztratí internet nebo zavře stránku, Firebase ji smaže automaticky přes onDisconnect.</li><li>Reálné zvuky musí být nahrané vedle HTML souboru: waterfall-real.mp3, sea-real.mp3, wind-real.mp3 a rain-real.mp3.</li>
       </ol>
     </details>
   </section>
@@ -146,7 +159,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, set, update, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{} };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -167,19 +180,149 @@ function initFirebase(){ if(state.db) return state.db; const cfg=parseCfg(); sta
 function setMode(mode){ state.mode=mode; $('childTab').classList.toggle('active',mode==='child'); $('parentTab').classList.toggle('active',mode==='parent'); $('childPanel').classList.toggle('hidden',mode!=='child'); $('parentPanel').classList.toggle('hidden',mode!=='parent'); }
 function statusText(st){ return st==='cry'?'PLÁČ':st==='suspect'?'PODEZŘENÍ':'KLID'; }
 
+
+function labelForNoise(mode){
+  switch(mode){
+    case "white": return "Bílý šum";
+    case "pink": return "Růžový šum";
+    case "brown": return "Hnědý šum";
+    case "waterfall": return "Vodopád";
+    case "waterfall_real": return "Vodopády (real)";
+    case "sea_real": return "Moře (real)";
+    case "wind_real": return "Vítr (real)";
+    case "rain_real": return "Déšť (real)";
+    case "rain": return "Déšť";
+    case "wind": return "Vítr";
+    case "fan": return "Ventilátor";
+    case "vacuum": return "Vysavač";
+    default: return "Šum";
+  }
+}
+
+function baseNoiseType(mode){
+  if(mode==="pink" || mode==="waterfall" || mode==="rain" || mode==="wind") return "pink";
+  if(mode==="brown" || mode==="fan") return "brown";
+  return "white";
+}
+
 function createNoise(ctx,type){
   const bufferSize = 2 * ctx.sampleRate;
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const out = buffer.getChannelData(0);
   let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,last=0;
+  const baseType = baseNoiseType(type);
   for(let i=0;i<bufferSize;i++){
     const white = Math.random()*2-1;
-    if(type==='white') out[i]=white*0.45;
-    else if(type==='brown'){ last = (last + 0.02*white) / 1.02; out[i]=last*3.5; }
+    if(baseType==='white') out[i]=white*0.45;
+    else if(baseType==='brown'){ last = (last + 0.02*white) / 1.02; out[i]=last*3.5; }
     else { b0 = 0.99886*b0 + white*0.0555179; b1 = 0.99332*b1 + white*0.0750759; b2 = 0.96900*b2 + white*0.1538520; b3 = 0.86650*b3 + white*0.3104856; b4 = 0.55000*b4 + white*0.5329522; b5 = -0.7616*b5 - white*0.0168980; out[i] = (b0+b1+b2+b3+b4+b5+b6+white*0.5362)*0.08; b6 = white*0.115926; }
   }
   const src = ctx.createBufferSource(); src.buffer=buffer; src.loop=true; return src;
 }
+
+function isRealNoise(mode){
+  return mode==="waterfall_real" || mode==="sea_real" || mode==="wind_real" || mode==="rain_real";
+}
+
+function realNoiseFile(mode){
+  if(mode==="waterfall_real") return "waterfall-real.mp3";
+  if(mode==="sea_real") return "sea-real.mp3";
+  if(mode==="wind_real") return "wind-real.mp3";
+  if(mode==="rain_real") return "rain-real.mp3";
+  return null;
+}
+
+async function loadRealBuffer(ctx,mode){
+  const file = realNoiseFile(mode);
+  if(!file) return null;
+  if(state.realBuffers[file]) return state.realBuffers[file];
+  if(!state.realBufferPromises[file]){
+    state.realBufferPromises[file] = fetch(file)
+      .then(r=>{ if(!r.ok) throw new Error("Nelze načíst "+file); return r.arrayBuffer(); })
+      .then(ab=>ctx.decodeAudioData(ab))
+      .then(buf=>{ state.realBuffers[file]=buf; return buf; });
+  }
+  return state.realBufferPromises[file];
+}
+
+function applyNoisePreset(ctx, source, mode, gain){
+  if(isRealNoise(mode)){
+    source.connect(gain);
+    return;
+  }
+
+  const f1 = ctx.createBiquadFilter();
+  const f2 = ctx.createBiquadFilter();
+  f1.type="allpass"; f2.type="allpass";
+
+  if(mode==="white"){
+    f1.type="lowpass"; f1.frequency.value=7600; f1.Q.value=0.16;
+    f2.type="highpass"; f2.frequency.value=70; f2.Q.value=0.1;
+  } else if(mode==="pink"){
+    f1.type="lowpass"; f1.frequency.value=7200; f1.Q.value=0.2;
+    f2.type="highpass"; f2.frequency.value=35; f2.Q.value=0.1;
+  } else if(mode==="brown"){
+    f1.type="lowpass"; f1.frequency.value=3000; f1.Q.value=0.2;
+    f2.type="highpass"; f2.frequency.value=25; f2.Q.value=0.1;
+  } else if(mode==="waterfall"){
+    f1.type="bandpass"; f1.frequency.value=1300; f1.Q.value=0.8;
+    f2.type="highshelf"; f2.frequency.value=2500; f2.gain.value=-5;
+  } else if(mode==="rain"){
+    f1.type="highpass"; f1.frequency.value=360; f1.Q.value=0.25;
+    f2.type="lowpass"; f2.frequency.value=11000; f2.Q.value=0.3;
+  } else if(mode==="wind"){
+    f1.type="lowpass"; f1.frequency.value=1000; f1.Q.value=0.6;
+    f2.type="highpass"; f2.frequency.value=70; f2.Q.value=0.2;
+  } else if(mode==="fan"){
+    f1.type="lowpass"; f1.frequency.value=620; f1.Q.value=0.9;
+    f2.type="peaking"; f2.frequency.value=190; f2.Q.value=1.2; f2.gain.value=4;
+  } else if(mode==="vacuum"){
+    f1.type="highpass"; f1.frequency.value=240; f1.Q.value=0.6;
+    f2.type="highshelf"; f2.frequency.value=1500; f2.gain.value=5;
+  }
+
+  source.connect(f1);
+  f1.connect(f2);
+  f2.connect(gain);
+}
+
+async function stopNoisePlayback(){
+  try{ state.noiseNode?.stop?.(); }catch{}
+  try{ state.noiseNode?.disconnect?.(); }catch{}
+  state.noiseNode=null;
+}
+
+async function startNoisePlayback(ctx){
+  await stopNoisePlayback();
+  const mode = $('noiseType').value;
+  const gain = ctx.createGain();
+  gain.gain.value=parseFloat($('noiseVolume').value);
+  gain.connect(ctx.destination);
+  state.noiseGain=gain;
+
+  let source;
+  if(isRealNoise(mode)){
+    const buf = await loadRealBuffer(ctx,mode);
+    source = ctx.createBufferSource();
+    source.buffer = buf;
+    source.loop = true;
+  } else {
+    source = createNoise(ctx, mode);
+  }
+
+  applyNoisePreset(ctx, source, mode, gain);
+  source.start();
+  state.noiseNode=source;
+  $('childInfo').textContent = "Přehrávám: " + labelForNoise(mode) + ". Nech 10 sekund kalibraci šumu.";
+}
+
+async function restartNoiseIfRunning(){
+  if(state.audioCtx && state.noiseGain){
+    await startNoisePlayback(state.audioCtx);
+    startCalibration();
+  }
+}
+
 async function setupChildAudio(){
   const ctx = new (window.AudioContext||window.webkitAudioContext)(); state.audioCtx=ctx;
   const mic = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false}, video:false});
@@ -187,9 +330,9 @@ async function setupChildAudio(){
   const micSrc = ctx.createMediaStreamSource(mic);
   const analyser = ctx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=.2; state.analyser=analyser; state.data=new Uint8Array(analyser.frequencyBinCount); micSrc.connect(analyser);
 
-  const noise = createNoise(ctx, $('noiseType').value); const gain = ctx.createGain(); gain.gain.value=parseFloat($('noiseVolume').value);
-  noise.connect(gain).connect(ctx.destination); noise.start(); state.noiseNode=noise; state.noiseGain=gain;
+  await startNoisePlayback(ctx);
   $('noiseVolume').oninput=()=>{ if(state.noiseGain) state.noiseGain.gain.value=parseFloat($('noiseVolume').value); };
+  $('noiseType').onchange=()=>restartNoiseIfRunning().catch(e=>log('childLog','Zvuk se nepodařilo přepnout: '+e.message));
   return mic;
 }
 function startCalibration(){ state.calibrating=true; state.baseline=new Float32Array(state.analyser.frequencyBinCount); state.calFrames=0; state.cryMs=0; $('childInfo').textContent='Kalibruji běžný šum v místnosti… nech 10 sekund klid.'; }
@@ -228,13 +371,6 @@ let lastFb=0,lastFbSt='';
 function throttleFirebase(st,score,level){ const now=Date.now(); if(!state.room||!state.db) return; if(st!==lastFbSt || now-lastFb>1000){ lastFb=now; lastFbSt=st; update(ref(state.db,`babyMonitor/${state.room}/status`),{state:st,score:+score.toFixed(3),level:+level.toFixed(3),updatedAt:serverTimestamp()}); } }
 function updateChildUi(st,score,level,diff){ $('childStatus').textContent=statusText(st); clsStatus($('childStatus'),st); const bar=$('childBar'); bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('childInfo').textContent=`Skóre pláče: ${(score*100).toFixed(0)} %, hlasitost: ${(level*100).toFixed(0)} %, rozdíl od šumu: ${(diff*100).toFixed(1)} %`; }
 
-async function createPeer(role){
-  const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
-  pc.oniceconnectionstatechange=()=>{ const t=`WebRTC: ${pc.iceConnectionState}`; role==='child' ? $('connChild').textContent=t : $('parentInfo').textContent=t; };
-  pc.ontrack=e=>{ const audio= role==='child' ? $('remoteAudioChild') : $('remoteAudioParent'); audio.srcObject=e.streams[0]; audio.play().catch(()=>{}); };
-  pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
-  return pc;
-}
 
 async function deleteCurrentRoom(){
   if(state.db && state.room && state.childOwnsRoom){
@@ -243,6 +379,13 @@ async function deleteCurrentRoom(){
   }
 }
 
+async function createPeer(role){
+  const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
+  pc.oniceconnectionstatechange=()=>{ const t=`WebRTC: ${pc.iceConnectionState}`; role==='child' ? $('connChild').textContent=t : $('parentInfo').textContent=t; };
+  pc.ontrack=e=>{ const audio= role==='child' ? $('remoteAudioChild') : $('remoteAudioParent'); audio.srcObject=e.streams[0]; audio.play().catch(()=>{}); };
+  pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
+  return pc;
+}
 async function startChild(){
   initFirebase(); state.room=$('childRoom').value.trim() || roomCode(); $('childRoom').value=state.room;
   await set(ref(state.db,`babyMonitor/${state.room}`),{createdAt:serverTimestamp(),status:{state:'quiet',score:0,level:0,updatedAt:serverTimestamp()}});
@@ -275,11 +418,12 @@ async function stopAll(){
   await deleteCurrentRoom();
   state.localStream?.getTracks().forEach(t=>t.stop());
   state.pc?.close();
-  state.noiseNode?.stop?.();
+  await stopNoisePlayback();
   state.audioCtx?.close?.();
   state.pc=null;
   state.localStream=null;
   state.audioCtx=null;
+  state.noiseGain=null;
   state.childOwnsRoom=false;
   state.disconnectRef=null;
   $('connChild').textContent='Zastaveno.';
