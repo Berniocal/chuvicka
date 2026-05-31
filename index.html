@@ -180,6 +180,7 @@ window.keepAwakeVideo = null;
 window.wakeLock = null;
 window.keepAwakeInterval = null;
 window.keepAwakeWanted = false;
+window.keepAwakePlayPromise = null;
 
 window.keepAwakeStart = async function(){
   window.keepAwakeWanted = true;
@@ -206,15 +207,18 @@ window.keepAwakeStart = async function(){
       v.playsInline = true;
       v.setAttribute("playsinline","");
       v.setAttribute("webkit-playsinline","");
-      if(v.paused){
-        try{ v.currentTime = 0; }catch(_e){}
+      if(!v.paused || window.keepAwakePlayPromise){
+        return;
       }
-      const p = v.play();
-      if(p && typeof p.catch === "function"){
-        await p.catch(err => console.warn("Keep-awake video nejde spustit:", err));
+      try{ v.currentTime = 0; }catch(_e){}
+      window.keepAwakePlayPromise = v.play();
+      if(window.keepAwakePlayPromise && typeof window.keepAwakePlayPromise.catch === "function"){
+        await window.keepAwakePlayPromise.catch(err => console.warn("Keep-awake video nejde spustit:", err));
       }
+      window.keepAwakePlayPromise = null;
     }
   }catch(e){
+    window.keepAwakePlayPromise = null;
     console.warn("Keep-awake video chyba:", e);
   }
 };
@@ -233,6 +237,7 @@ window.keepAwakeStop = async function(){
     const v = document.getElementById("keepAwakeVideo");
     if(v){
       v.pause();
+      window.keepAwakePlayPromise = null;
       v.currentTime = 0;
     }
   }catch(e){
@@ -252,7 +257,7 @@ window.keepAwakeMaintain = function(){
 };
 
 document.addEventListener("visibilitychange", () => {
-  if(document.visibilityState === "visible"){
+  if(document.visibilityState === "visible" && window.keepAwakeWanted){
     window.keepAwakeStart();
   }
 });
@@ -513,7 +518,7 @@ async function createPeer(role){
 async function startChild(){
   const myStartSeq = ++state.startSeq;
   state.childStarted = false;
-  try{ window.keepAwakeMaintain?.(); await window.keepAwakeStart(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
+  try{ window.keepAwakeMaintain?.(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
   if(myStartSeq !== state.startSeq) return;
   initFirebase(); state.room=$('childRoom').value.trim() || roomCode(); $('childRoom').value=state.room;
 
@@ -627,7 +632,6 @@ async function stopAll(){
   state.noiseGain=null;
   state.childOwnsRoom=false;
   state.disconnectRef=null;
-  const kav=document.getElementById('keepAwakeVideo'); if(kav){ try{kav.pause(); kav.currentTime=0;}catch(e){} }
   $('connChild').textContent='Zastaveno.';
   $('parentInfo').textContent='Odpojeno.';
 }
