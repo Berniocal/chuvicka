@@ -51,9 +51,6 @@
 
 
 <style>
-
-
-<style>
   #blackScreenBtn{
     position:fixed;
     right:12px;
@@ -496,7 +493,7 @@ async function startChild(){
   const roomRef = ref(state.db,`babyMonitor/${state.room}`);
   const existingRoom = await get(roomRef);
   if(existingRoom.exists()){
-    const msg = 'Tahle místnost už je obsazená. Vyber nebo vygeneruj jiný kód místnosti.';
+    const msg = 'Místnost už existuje. Pokud je to staré spojení, nejdřív dej STOP nebo použij jiný kód.';
     $('connChild').textContent = msg;
     alert(msg);
     return;
@@ -587,7 +584,7 @@ async function stopAll(){
   state.noiseGain=null;
   state.childOwnsRoom=false;
   state.disconnectRef=null;
-  const kav=document.getElementById('keepAliveVideo'); if(kav){ try{kav.pause(); kav.currentTime=0;}catch(e){} }
+  const kav=document.getElementById('keepAwakeVideo'); if(kav){ try{kav.pause(); kav.currentTime=0;}catch(e){} }
   $('connChild').textContent='Zastaveno.';
   $('parentInfo').textContent='Odpojeno.';
 }
