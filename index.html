@@ -135,7 +135,7 @@
         <li>Vytvoř Firebase Realtime Database a do pravidel pro testování dej dočasně čtení/zápis pro místnosti, které používáš.</li>
         <li>Na dětském telefonu zvol režim Dítě, vytvoř místnost a spusť jednotku. Prvních 10 sekund nech místnost v klidu – učí se šum.</li>
         <li>Na rodičovském telefonu zvol Rodič, opiš kód a připoj se.</li>
-        <li>Telefon u dítěte nech v nabíječce, se zapnutou obrazovkou nebo nastavením proti uspání.</li>
+        <li>Telefon u dítěte nech v nabíječce, se zapnutou obrazovkou nebo nastavením proti uspání.</li><li>Tlačítko Stop smaže místnost z Firebase. Když dětský telefon ztratí internet nebo zavře stránku, Firebase ji smaže automaticky přes onDisconnect.</li>
       </ol>
     </details>
   </section>
@@ -143,10 +143,10 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getDatabase, ref, set, update, onValue, push, onChildAdded, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getDatabase, ref, set, update, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -235,9 +235,20 @@ async function createPeer(role){
   pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
   return pc;
 }
+
+async function deleteCurrentRoom(){
+  if(state.db && state.room && state.childOwnsRoom){
+    try{ await remove(ref(state.db,`babyMonitor/${state.room}`)); }
+    catch(e){ console.warn('Místnost nešla smazat:', e); }
+  }
+}
+
 async function startChild(){
   initFirebase(); state.room=$('childRoom').value.trim() || roomCode(); $('childRoom').value=state.room;
   await set(ref(state.db,`babyMonitor/${state.room}`),{createdAt:serverTimestamp(),status:{state:'quiet',score:0,level:0,updatedAt:serverTimestamp()}});
+  state.childOwnsRoom=true;
+  state.disconnectRef = onDisconnect(ref(state.db,`babyMonitor/${state.room}`));
+  await state.disconnectRef.remove();
   const stream=await setupChildAudio(); startCalibration(); requestNext();
   const pc=await createPeer('child'); stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
@@ -246,7 +257,7 @@ async function startChild(){
   $('connChild').textContent='Místnost vytvořena. Opiš kód do rodičovského telefonu: '+state.room; log('childLog','Dětská jednotka spuštěna.');
 }
 async function joinParent(){
-  initFirebase(); state.room=$('parentRoom').value.trim(); if(!state.room) return alert('Zadej kód místnosti.');
+  initFirebase(); state.room=$('parentRoom').value.trim(); state.childOwnsRoom=false; if(!state.room) return alert('Zadej kód místnosti.');
   const pc=await createPeer('parent');
   const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
   mic.getTracks().forEach(t=>pc.addTrack(t,mic)); state.localStream=mic;
@@ -259,7 +270,21 @@ async function joinParent(){
 function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
 function alarm(){ const mode=$('alarmMode').value; if(mode==='vibrate'||mode==='both') navigator.vibrate?.([300,150,300,150,600]); if(mode==='beep'||mode==='both') beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
-function stopAll(){ cancelAnimationFrame(state.loop); state.localStream?.getTracks().forEach(t=>t.stop()); state.pc?.close(); state.noiseNode?.stop?.(); state.audioCtx?.close?.(); state.pc=null; state.localStream=null; state.audioCtx=null; $('connChild').textContent='Zastaveno.'; $('parentInfo').textContent='Odpojeno.'; }
+async function stopAll(){
+  cancelAnimationFrame(state.loop);
+  await deleteCurrentRoom();
+  state.localStream?.getTracks().forEach(t=>t.stop());
+  state.pc?.close();
+  state.noiseNode?.stop?.();
+  state.audioCtx?.close?.();
+  state.pc=null;
+  state.localStream=null;
+  state.audioCtx=null;
+  state.childOwnsRoom=false;
+  state.disconnectRef=null;
+  $('connChild').textContent='Zastaveno.';
+  $('parentInfo').textContent='Odpojeno.';
+}
 
 $('themeBtn').onclick=()=>{ const dark=document.body.dataset.theme!=='dark'; document.body.dataset.theme=dark?'dark':'light'; $('themeBtn').textContent=dark?'☀️':'🌙'; };
 
