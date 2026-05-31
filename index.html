@@ -43,6 +43,8 @@
     [data-theme="dark"] .log{background:rgba(255,255,255,.05)}
     details{border:1px solid var(--line);border-radius:18px;padding:12px;background:var(--card)} summary{cursor:pointer;font-weight:800}.warnbox{border-left:5px solid var(--warn);padding:10px 12px;background:color-mix(in srgb,var(--primary2) 70%,transparent);border-radius:14px}.dangerbox{border-left:5px solid var(--danger);padding:10px 12px;background:rgba(201,71,71,.10);border-radius:14px}
   </style>
+
+<link rel="manifest" href="manifest.json">
 </head>
 <body data-theme="light">
 <div class="wrap">
@@ -477,5 +479,39 @@ $('stopChild').onclick=stopAll; $('joinParent').onclick=()=>joinParent().catch(e
 $('cryDetector').oninput=updateDetectorInfo;
 loadCfg(); $('childRoom').value=roomCode(); updateDetectorInfo();
 </script>
+
+<script>
+let wakeLock=null;
+async function requestWakeLock(){
+ try{
+  if('wakeLock' in navigator){
+   wakeLock=await navigator.wakeLock.request('screen');
+  }
+ }catch(e){}
+}
+
+document.addEventListener('click',()=>requestWakeLock(),{once:true});
+
+window.addEventListener('load',()=>{
+ const b=document.createElement('button');
+ b.textContent='Zhasnout obrazovku';
+ b.style.position='fixed';
+ b.style.right='10px';
+ b.style.bottom='10px';
+ b.style.zIndex='9999';
+ document.body.appendChild(b);
+
+ const overlay=document.createElement('div');
+ overlay.style.cssText='display:none;position:fixed;inset:0;background:black;z-index:99999;';
+ document.body.appendChild(overlay);
+
+ b.onclick=()=>overlay.style.display='block';
+ overlay.onclick=()=>overlay.style.display='none';
+});
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.register('./service-worker.js');
+}
+</script>
+
 </body>
 </html>
