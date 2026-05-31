@@ -80,19 +80,17 @@
 
 </head>
 <body data-theme="light">
-
   <!-- KEEP AWAKE VIDEO (neviditelné) -->
   <video id="keepAwakeVideo"
     playsinline
     muted
     loop
     preload="auto"
-    style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;">
+    style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;">
     <source
       src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAACBtZGF0AAAAAA=="
       type="video/mp4">
   </video>
-
 <div class="wrap">
   <header>
     <div>
@@ -177,6 +175,71 @@
     <div class="log" id="parentLog"></div>
   </section>
 </div>
+
+
+<script>
+/* KEEP AWAKE – musí být před hlavním modulem */
+window.keepAwakeVideo = null;
+window.wakeLock = null;
+
+window.keepAwakeStart = async function(){
+  try{
+    if("wakeLock" in navigator && !window.wakeLock){
+      window.wakeLock = await navigator.wakeLock.request("screen");
+      window.wakeLock.addEventListener("release", () => window.wakeLock = null);
+      console.log("Wake Lock aktivní.");
+    }
+  }catch(e){
+    console.warn("Wake Lock nejde zapnout:", e);
+  }
+
+  try{
+    const v = document.getElementById("keepAwakeVideo");
+    if(v){
+      v.muted = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.setAttribute("playsinline","");
+      v.setAttribute("webkit-playsinline","");
+      const p = v.play();
+      if(p && typeof p.catch === "function"){
+        await p.catch(err => console.warn("Keep-awake video nejde spustit:", err));
+      }
+    }
+  }catch(e){
+    console.warn("Keep-awake video chyba:", e);
+  }
+};
+
+window.keepAwakeStop = async function(){
+  try{
+    if(window.wakeLock) await window.wakeLock.release();
+  }catch(e){
+    console.warn("Wake Lock nejde vypnout:", e);
+  }
+  window.wakeLock = null;
+
+  try{
+    const v = document.getElementById("keepAwakeVideo");
+    if(v){
+      v.pause();
+      v.currentTime = 0;
+    }
+  }catch(e){
+    console.warn("Keep-awake video nejde zastavit:", e);
+  }
+};
+
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible"){
+    window.keepAwakeStart();
+  }
+});
+
+document.addEventListener("pointerdown", () => {
+  window.keepAwakeStart();
+}, { once:true });
+</script>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
@@ -427,7 +490,7 @@ async function createPeer(role){
   return pc;
 }
 async function startChild(){
-  await keepAwakeStart();
+  try{ await window.keepAwakeStart(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
   initFirebase(); state.room=$('childRoom').value.trim() || roomCode(); $('childRoom').value=state.room;
 
   const roomRef = ref(state.db,`babyMonitor/${state.room}`);
@@ -509,7 +572,7 @@ function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').tex
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
-  await keepAwakeStop();
+  await window.keepAwakeStop();
   cancelAnimationFrame(state.loop);
   clearInterval(state.parentWatchdog);
   state.parentWatchdog=null;
@@ -539,81 +602,6 @@ $('cryDetector').oninput=updateDetectorInfo;
 loadCfg(); $('childRoom').value=roomCode(); updateDetectorInfo();
 </script>
 
-
-<script>
-// ================= KEEP AWAKE =================
-const keepAwakeVideo = document.getElementById("keepAwakeVideo");
-let wakeLock = null;
-
-async function keepAwakeStart(){
-  try {
-    if ("wakeLock" in navigator && !wakeLock) {
-      wakeLock = await navigator.wakeLock.request("screen");
-      wakeLock.addEventListener("release", () => wakeLock = null);
-    }
-  } catch {}
-
-  try {
-    await keepAwakeVideo.play();
-  } catch {}
-}
-
-async function keepAwakeStop(){
-  try {
-    if (wakeLock) await wakeLock.release();
-  } catch {}
-  wakeLock = null;
-
-  try {
-    keepAwakeVideo.pause();
-    keepAwakeVideo.currentTime = 0;
-  } catch {}
-}
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    keepAwakeStart();
-  }
-});
-
-document.addEventListener("click", () => {
-  keepAwakeStart();
-}, { once:true });
-
-function setupBlackScreen(){
-  if(document.getElementById("blackScreenOverlay")) return;
-
-  const btn = document.createElement("button");
-  btn.id = "blackScreenBtn";
-  btn.type = "button";
-  btn.textContent = "Černá obrazovka";
-  document.body.appendChild(btn);
-
-  const overlay = document.createElement("div");
-  overlay.id = "blackScreenOverlay";
-  overlay.title = "Klepnutím se vrátíš do aplikace";
-  document.body.appendChild(overlay);
-
-  btn.addEventListener("click", async () => {
-    await keepAwakeStart();
-    overlay.style.display = "block";
-  });
-
-  overlay.addEventListener("click", async () => {
-    overlay.style.display = "none";
-    await keepAwakeStart();
-  });
-}
-
-window.addEventListener("load", setupBlackScreen);
-
-if("serviceWorker" in navigator){
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(console.warn);
-  });
-}
-// ==============================================
-</script>
 
 </body>
 </html>
