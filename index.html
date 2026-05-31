@@ -178,12 +178,20 @@
 /* KEEP AWAKE – musí být před hlavním modulem */
 window.keepAwakeVideo = null;
 window.wakeLock = null;
+window.keepAwakeInterval = null;
+window.keepAwakeWanted = false;
 
 window.keepAwakeStart = async function(){
+  window.keepAwakeWanted = true;
   try{
     if("wakeLock" in navigator && !window.wakeLock){
       window.wakeLock = await navigator.wakeLock.request("screen");
-      window.wakeLock.addEventListener("release", () => window.wakeLock = null);
+      window.wakeLock.addEventListener("release", () => {
+        window.wakeLock = null;
+        if(window.keepAwakeWanted && document.visibilityState === "visible"){
+          setTimeout(() => window.keepAwakeStart?.(), 250);
+        }
+      });
       console.log("Wake Lock aktivní.");
     }
   }catch(e){
@@ -198,6 +206,9 @@ window.keepAwakeStart = async function(){
       v.playsInline = true;
       v.setAttribute("playsinline","");
       v.setAttribute("webkit-playsinline","");
+      if(v.paused){
+        try{ v.currentTime = 0; }catch(_e){}
+      }
       const p = v.play();
       if(p && typeof p.catch === "function"){
         await p.catch(err => console.warn("Keep-awake video nejde spustit:", err));
@@ -209,6 +220,8 @@ window.keepAwakeStart = async function(){
 };
 
 window.keepAwakeStop = async function(){
+  window.keepAwakeWanted = false;
+  if(window.keepAwakeInterval){ clearInterval(window.keepAwakeInterval); window.keepAwakeInterval = null; }
   try{
     if(window.wakeLock) await window.wakeLock.release();
   }catch(e){
@@ -227,6 +240,17 @@ window.keepAwakeStop = async function(){
   }
 };
 
+window.keepAwakeMaintain = function(){
+  window.keepAwakeWanted = true;
+  if(window.keepAwakeInterval) return;
+  window.keepAwakeStart();
+  window.keepAwakeInterval = setInterval(() => {
+    if(window.keepAwakeWanted && document.visibilityState === "visible"){
+      window.keepAwakeStart();
+    }
+  }, 15000);
+};
+
 document.addEventListener("visibilitychange", () => {
   if(document.visibilityState === "visible"){
     window.keepAwakeStart();
@@ -243,7 +267,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, set, update, get, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{} };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -487,11 +511,15 @@ async function createPeer(role){
   return pc;
 }
 async function startChild(){
-  try{ await window.keepAwakeStart(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
+  const myStartSeq = ++state.startSeq;
+  state.childStarted = false;
+  try{ window.keepAwakeMaintain?.(); await window.keepAwakeStart(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
+  if(myStartSeq !== state.startSeq) return;
   initFirebase(); state.room=$('childRoom').value.trim() || roomCode(); $('childRoom').value=state.room;
 
   const roomRef = ref(state.db,`babyMonitor/${state.room}`);
   const existingRoom = await get(roomRef);
+  if(myStartSeq !== state.startSeq) return;
   if(existingRoom.exists()){
     const msg = 'Místnost už existuje. Pokud je to staré spojení, nejdřív dej STOP nebo použij jiný kód.';
     $('connChild').textContent = msg;
@@ -500,14 +528,27 @@ async function startChild(){
   }
 
   await set(roomRef,{createdAt:serverTimestamp(),status:{state:'quiet',score:0,level:0,updatedAt:serverTimestamp()}});
+  if(myStartSeq !== state.startSeq){ await remove(roomRef).catch(()=>{}); return; }
   state.childOwnsRoom=true;
   state.disconnectRef = onDisconnect(ref(state.db,`babyMonitor/${state.room}`));
   await state.disconnectRef.remove();
-  const stream=await setupChildAudio(); startCalibration(); requestNext();
-  const pc=await createPeer('child'); stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  if(myStartSeq !== state.startSeq){ await deleteCurrentRoom(); return; }
+  const stream=await setupChildAudio();
+  if(myStartSeq !== state.startSeq){ await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
+  startCalibration(); requestNext();
+  const pc=await createPeer('child');
+  if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
+  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
-  const offer=await pc.createOffer(); await pc.setLocalDescription(offer); await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
+  const offer=await pc.createOffer();
+  if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
+  await pc.setLocalDescription(offer);
+  if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
+  await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
+  if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
+  state.childStarted = true;
+  window.keepAwakeMaintain?.();
   $('connChild').textContent='Místnost vytvořena. Opiš kód do rodičovského telefonu: '+state.room; log('childLog','Dětská jednotka spuštěna.');
 }
 
@@ -569,6 +610,8 @@ function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').tex
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
+  state.startSeq++;
+  state.childStarted=false;
   await window.keepAwakeStop();
   cancelAnimationFrame(state.loop);
   clearInterval(state.parentWatchdog);
