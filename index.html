@@ -70,8 +70,12 @@
     inset:0;
     z-index:99999;
     background:#000;
+    color:#222;
     cursor:pointer;
-    touch-action:none;
+    touch-action:manipulation;
+  }
+  #blackScreenOverlay.active{
+    display:block;
   }
 </style>
 
@@ -88,6 +92,8 @@
       src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAACBtZGF0AAAAAA=="
       type="video/mp4">
   </video>
+  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">⬛ Černá obrazovka</button>
+  <div id="blackScreenOverlay" role="button" tabindex="0" aria-label="Černá obrazovka. Klepnutím se vrátíš zpět."></div>
 <div class="wrap">
   <header>
     <div>
@@ -552,6 +558,11 @@ async function startChild(){
   const pc=await createPeer('child');
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
   stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.getTransceivers().forEach(transceiver=>{
+    if(transceiver.sender?.track?.kind==='audio'){
+      transceiver.direction='sendonly';
+    }
+  });
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
   const offer=await pc.createOffer();
@@ -612,11 +623,6 @@ async function joinParent(){
   state.localStream=null;
   const offerSnap = await new Promise(resolve=>{ const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{ if(s.val()){ off(); resolve(s); } }); });
   await pc.setRemoteDescription(offerSnap.val());
-  pc.getTransceivers().forEach(transceiver=>{
-    if(transceiver.receiver?.track?.kind==='audio'){
-      transceiver.direction='recvonly';
-    }
-  });
   const answer=await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
@@ -654,6 +660,21 @@ async function stopAll(){
 
 $('themeBtn').onclick=()=>{ const dark=document.body.dataset.theme!=='dark'; document.body.dataset.theme=dark?'dark':'light'; $('themeBtn').textContent=dark?'☀️':'🌙'; };
 
+function showBlackScreen(){
+  $('blackScreenOverlay').classList.add('active');
+  $('blackScreenOverlay').focus?.();
+}
+function hideBlackScreen(){
+  $('blackScreenOverlay').classList.remove('active');
+}
+$('blackScreenBtn').onclick=showBlackScreen;
+$('blackScreenOverlay').onclick=hideBlackScreen;
+$('blackScreenOverlay').onkeydown=e=>{
+  if(e.key==='Enter' || e.key===' ' || e.key==='Escape'){
+    e.preventDefault();
+    hideBlackScreen();
+  }
+};
 
 $('childTab').onclick=()=>setMode('child'); $('parentTab').onclick=()=>setMode('parent');
 $('startChild').onclick=()=>startChild().catch(e=>{ alert(e.message); log('childLog','Chyba: '+e.message); });
