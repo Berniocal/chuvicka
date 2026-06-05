@@ -278,7 +278,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, set, update, get, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, intentionalStop:false, parentWebRtcLostTimer:null };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -514,21 +514,37 @@ async function deleteCurrentRoom(){
   }
 }
 
+function scheduleParentWebRtcLost(pc, reason){
+  clearTimeout(state.parentWebRtcLostTimer);
+  state.parentWebRtcLostTimer=setTimeout(()=>{
+    if(state.pc===pc && !state.intentionalStop && ['disconnected','failed'].includes(pc.iceConnectionState)){
+      showParentLost(reason);
+    }
+  },10000);
+}
+function clearParentWebRtcLostTimer(){
+  clearTimeout(state.parentWebRtcLostTimer);
+  state.parentWebRtcLostTimer=null;
+}
+
 async function createPeer(role){
   const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
   pc.oniceconnectionstatechange=()=>{
     const t=`WebRTC: ${pc.iceConnectionState}`;
     role==='child' ? $('connChild').textContent=t : $('parentInfo').textContent=t;
-    if(role==='parent' && ['failed','closed'].includes(pc.iceConnectionState)){
-      showParentLost('WebRTC spojení s dětským telefonem bylo přerušeno.');
+    if(role!=='parent' || state.intentionalStop) return;
+    if(['connected','completed'].includes(pc.iceConnectionState)){
+      clearParentWebRtcLostTimer();
+      clearParentLost();
+      return;
     }
-    // Stav disconnected je na mobilech často jen krátký výpadek při uspání sítě.
-    if(role==='parent' && pc.iceConnectionState==='disconnected'){
-      setTimeout(()=>{
-        if(state.pc===pc && pc.iceConnectionState==='disconnected'){
-          showParentLost('WebRTC spojení s dětským telefonem bylo přerušeno.');
-        }
-      }, 12000);
+    if(pc.iceConnectionState==='disconnected'){
+      log('parentLog','WebRTC je dočasně odpojené, čekám na obnovení spojení.');
+      scheduleParentWebRtcLost(pc,'WebRTC spojení s dětským telefonem bylo přerušeno déle než 10 sekund.');
+      return;
+    }
+    if(pc.iceConnectionState==='failed'){
+      showParentLost('WebRTC spojení s dětským telefonem selhalo. Zkus rodiče odpojit a znovu připojit.');
     }
   };
   pc.ontrack=e=>{
@@ -537,13 +553,16 @@ async function createPeer(role){
       return;
     }
     const audio=$('remoteAudioParent');
-    audio.srcObject=e.streams[0];
-    audio.play().catch(()=>{});
+    audio.muted=false;
+    audio.volume=1;
+    audio.srcObject=e.streams[0] || new MediaStream([e.track]);
+    audio.play().catch(err=>log('parentLog','Zvuk dítěte čeká na klepnutí na přehrávač: '+err.message));
   };
   pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
   return pc;
 }
 async function startChild(){
+  state.intentionalStop=false;
   const myStartSeq = ++state.startSeq;
   state.childStarted = false;
   try{ window.keepAwakeMaintain?.(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
@@ -634,13 +653,10 @@ function lostBeep(){
 }
 
 async function joinParent(){
+  state.intentionalStop=false;
   initFirebase(); state.room=$('parentRoom').value.trim(); state.childOwnsRoom=false; if(!state.room) return alert('Zadej kód místnosti.');
   const pc=await createPeer('parent');
   state.localStream=null;
-
-  // Rodič pouze přijímá zvuk. Mikrofon rodiče se vůbec nezapíná.
-  pc.addTransceiver('audio', { direction:'recvonly' });
-
   const offerSnap = await new Promise(resolve=>{ const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{ if(s.val()){ off(); resolve(s); } }); });
   await pc.setRemoteDescription(offerSnap.val());
   const answer=await pc.createAnswer();
@@ -657,6 +673,8 @@ function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').tex
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
+  state.intentionalStop=true;
+  clearParentWebRtcLostTimer();
   state.startSeq++;
   state.childStarted=false;
   await window.keepAwakeStop();
