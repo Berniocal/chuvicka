@@ -278,7 +278,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, set, update, get, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, intentionalStop:false, parentWebRtcLostTimer:null };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, parentConnectedAt:0, webrtcFailed:false };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -514,55 +514,87 @@ async function deleteCurrentRoom(){
   }
 }
 
-function scheduleParentWebRtcLost(pc, reason){
-  clearTimeout(state.parentWebRtcLostTimer);
-  state.parentWebRtcLostTimer=setTimeout(()=>{
-    if(state.pc===pc && !state.intentionalStop && ['disconnected','failed'].includes(pc.iceConnectionState)){
-      showParentLost(reason);
-    }
-  },10000);
-}
-function clearParentWebRtcLostTimer(){
-  clearTimeout(state.parentWebRtcLostTimer);
-  state.parentWebRtcLostTimer=null;
-}
-
 async function createPeer(role){
   const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
-  pc.oniceconnectionstatechange=()=>{
-    const t=`WebRTC: ${pc.iceConnectionState}`;
-    role==='child' ? $('connChild').textContent=t : $('parentInfo').textContent=t;
-    if(role!=='parent' || state.intentionalStop) return;
-    if(['connected','completed'].includes(pc.iceConnectionState)){
-      clearParentWebRtcLostTimer();
-      clearParentLost();
-      return;
-    }
-    if(pc.iceConnectionState==='disconnected'){
-      log('parentLog','WebRTC je dočasně odpojené, čekám na obnovení spojení.');
-      scheduleParentWebRtcLost(pc,'WebRTC spojení s dětským telefonem bylo přerušeno déle než 10 sekund.');
-      return;
-    }
-    if(pc.iceConnectionState==='failed'){
-      showParentLost('WebRTC spojení s dětským telefonem selhalo. Zkus rodiče odpojit a znovu připojit.');
+
+  pc.onconnectionstatechange=()=>{
+    const t=`WebRTC: ${pc.connectionState}`;
+    if(role==='child') $('connChild').textContent=t;
+    else $('parentInfo').textContent=t;
+
+    // „disconnected“ bývá na mobilech často jen krátký výpadek při uspání sítě.
+    // Za ztrátu spojení bereme až failed/closed, nebo dlouhé disconnected.
+    if(role==='parent'){
+      if(['connected','completed'].includes(pc.iceConnectionState) || pc.connectionState==='connected'){
+        state.parentConnectedAt=Date.now();
+        state.webrtcFailed=false;
+      }
+      if(['failed','closed'].includes(pc.connectionState)){
+        state.webrtcFailed=true;
+        showParentLost('WebRTC spojení s dětským telefonem bylo ztraceno.');
+      }
     }
   };
+
+  pc.oniceconnectionstatechange=()=>{
+    const t=`WebRTC ICE: ${pc.iceConnectionState}`;
+    if(role==='child') $('connChild').textContent=t;
+    else $('parentInfo').textContent=t;
+
+    if(role==='parent'){
+      if(['connected','completed'].includes(pc.iceConnectionState)){
+        state.parentConnectedAt=Date.now();
+        state.webrtcFailed=false;
+      }
+      if(pc.iceConnectionState==='failed'){
+        state.webrtcFailed=true;
+        showParentLost('WebRTC spojení s dětským telefonem selhalo.');
+      }
+      if(pc.iceConnectionState==='disconnected'){
+        const sinceConnect = state.parentConnectedAt ? Date.now()-state.parentConnectedAt : 0;
+        // Teprve delší disconnected bereme jako skutečný pád.
+        setTimeout(()=>{
+          if(state.pc===pc && pc.iceConnectionState==='disconnected'){
+            const wasConnectedLongEnough = state.parentConnectedAt && Date.now()-state.parentConnectedAt>12000;
+            if(wasConnectedLongEnough){
+              showParentLost('WebRTC spojení s dětským telefonem bylo delší dobu přerušené.');
+            } else {
+              $('parentInfo').textContent='WebRTC se ještě navazuje… Pokud neslyšíš zvuk, klepni na přehrávač níže.';
+            }
+          }
+        }, 8000);
+      }
+    }
+  };
+
   pc.ontrack=e=>{
     if(role==='child'){
       log('childLog','Příchozí zvuk z rodičovské jednotky je z důvodu soukromí ignorován.');
       return;
     }
     const audio=$('remoteAudioParent');
+    audio.srcObject=e.streams[0];
     audio.muted=false;
     audio.volume=1;
-    audio.srcObject=e.streams[0] || new MediaStream([e.track]);
-    audio.play().catch(err=>log('parentLog','Zvuk dítěte čeká na klepnutí na přehrávač: '+err.message));
+    log('parentLog','Dorazila audio stopa od dětského telefonu.');
+    const p=audio.play();
+    if(p && typeof p.catch==='function'){
+      p.catch(()=>{
+        $('parentInfo').textContent='Zvuk dorazil, ale prohlížeč blokuje automatické přehrání. Klepni na tlačítko Play v přehrávači.';
+        log('parentLog','Prohlížeč zablokoval automatické přehrání zvuku – klepni na Play.');
+      });
+    }
   };
-  pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
+
+  pc.onicecandidate=e=>{
+    if(e.candidate && state.db && state.room){
+      const path=`babyMonitor/${state.room}/candidates/${role}`;
+      push(ref(state.db,path),e.candidate.toJSON());
+    }
+  };
   return pc;
 }
 async function startChild(){
-  state.intentionalStop=false;
   const myStartSeq = ++state.startSeq;
   state.childStarted = false;
   try{ window.keepAwakeMaintain?.(); }catch(e){ console.warn('Keep awake nezastavuje spuštění:', e); }
@@ -590,14 +622,19 @@ async function startChild(){
   startCalibration(); requestNext();
   const pc=await createPeer('child');
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
-
-  // Dítě pouze vysílá mikrofon. Nepřijímá žádný zvuk od rodiče.
-  // addTransceiver je pro WebRTC jistější než dodatečná změna direction po addTrack().
   const audioTrack = stream.getAudioTracks()[0];
   if(!audioTrack){
-    throw new Error('Mikrofon se nespustil – není dostupná žádná audio stopa.');
+    throw new Error('Mikrofon se sice povolil, ale nevznikla žádná audio stopa.');
   }
-  pc.addTransceiver(audioTrack, { direction:'sendonly', streams:[stream] });
+  audioTrack.enabled = true;
+  pc.addTrack(audioTrack, stream);
+  await update(ref(state.db,`babyMonitor/${state.room}/mic`),{
+    ready:true,
+    enabled:audioTrack.enabled,
+    muted:audioTrack.muted,
+    label:audioTrack.label || 'microphone',
+    updatedAt:serverTimestamp()
+  });
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
   const offer=await pc.createOffer();
@@ -653,28 +690,57 @@ function lostBeep(){
 }
 
 async function joinParent(){
-  state.intentionalStop=false;
   initFirebase(); state.room=$('parentRoom').value.trim(); state.childOwnsRoom=false; if(!state.room) return alert('Zadej kód místnosti.');
+  state.parentConnectedAt=0;
+  state.webrtcFailed=false;
+  clearParentLost();
+
   const pc=await createPeer('parent');
   state.localStream=null;
-  const offerSnap = await new Promise(resolve=>{ const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{ if(s.val()){ off(); resolve(s); } }); });
+
+  // Rodič nezapíná mikrofon. Proto dítě rodiče neslyší, ale rodič má přijímat audio z nabídky dítěte.
+  const offerSnap = await new Promise(resolve=>{
+    const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{
+      if(s.val()){ off(); resolve(s); }
+    });
+  });
   await pc.setRemoteDescription(offerSnap.val());
   const answer=await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
-  onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/child`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('parentLog','ICE child chyba: '+e.message); } });
-  onValue(ref(state.db,`babyMonitor/${state.room}/status`), snap=>{ const s=snap.val(); if(s){ state.lastParentStatusAt=Date.now(); clearParentLost(); updateParentStatus(s); } else { showParentLost('Místnost ve Firebase zmizela. Dětský telefon se nejspíš odpojil nebo stiskl Stop.'); } });
+
+  onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/child`), async snap=>{
+    try{ await pc.addIceCandidate(snap.val()); }
+    catch(e){ log('parentLog','ICE child chyba: '+e.message); }
+  });
+
+  onValue(ref(state.db,`babyMonitor/${state.room}/mic`), snap=>{
+    const m=snap.val();
+    if(m){
+      log('parentLog',`Mikrofon dítěte: ready=${!!m.ready}, enabled=${!!m.enabled}, muted=${!!m.muted}`);
+    }
+  });
+
+  onValue(ref(state.db,`babyMonitor/${state.room}/status`), snap=>{
+    const s=snap.val();
+    if(s){ state.lastParentStatusAt=Date.now(); clearParentLost(); updateParentStatus(s); }
+    else { showParentLost('Místnost ve Firebase zmizela. Dětský telefon se nejspíš odpojil nebo stiskl Stop.'); }
+  });
   state.lastParentStatusAt=Date.now();
   startParentWatchdog();
-  $('parentInfo').textContent='Rodič připojen. Mikrofon rodiče je vypnutý – dítě rodiče neslyší.';
-  log('parentLog','Rodič připojen k místnosti '+state.room+' bez zapnutí mikrofonu.');
+  $('parentInfo').textContent='Rodič připojen. Mikrofon rodiče je vypnutý, ale zvuk z dětského telefonu se má přehrát v přehrávači níže.';
+  log('parentLog','Rodič připojen k místnosti '+state.room+' bez zapnutí rodičovského mikrofonu.');
+
+  // Uživatelské klepnutí na tlačítko Připojit dovolí v mobilech spustit audio kontext/přehrávání.
+  const audio=$('remoteAudioParent');
+  audio.muted=false;
+  audio.volume=1;
+  audio.play?.().catch(()=>{});
 }
-function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}. Mikrofon rodiče je vypnutý.`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
+function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}. Mikrofon rodiče je vypnutý; přijímá se jen zvuk dítěte.`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
-  state.intentionalStop=true;
-  clearParentWebRtcLostTimer();
   state.startSeq++;
   state.childStarted=false;
   await window.keepAwakeStop();
