@@ -590,7 +590,14 @@ async function startChild(){
   startCalibration(); requestNext();
   const pc=await createPeer('child');
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
-  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+
+  // Dítě pouze vysílá mikrofon. Nepřijímá žádný zvuk od rodiče.
+  // addTransceiver je pro WebRTC jistější než dodatečná změna direction po addTrack().
+  const audioTrack = stream.getAudioTracks()[0];
+  if(!audioTrack){
+    throw new Error('Mikrofon se nespustil – není dostupná žádná audio stopa.');
+  }
+  pc.addTransceiver(audioTrack, { direction:'sendonly', streams:[stream] });
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
   const offer=await pc.createOffer();
