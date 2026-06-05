@@ -70,8 +70,12 @@
     inset:0;
     z-index:99999;
     background:#000;
+    color:#222;
     cursor:pointer;
-    touch-action:none;
+    touch-action:manipulation;
+  }
+  #blackScreenOverlay.active{
+    display:block;
   }
 </style>
 
@@ -88,6 +92,8 @@
       src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAACBtZGF0AAAAAA=="
       type="video/mp4">
   </video>
+  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">⬛ Černá obrazovka</button>
+  <div id="blackScreenOverlay" role="button" tabindex="0" aria-label="Černá obrazovka. Klepnutím se vrátíš zpět."></div>
 <div class="wrap">
   <header>
     <div>
@@ -166,7 +172,7 @@
       <div class="pill">Aktuální stav</div>
       <div id="parentStatus" class="bigStatus quiet">ČEKÁM</div>
       <div class="meter"><div id="parentBar" class="bar"></div></div>
-      <p id="parentInfo" class="small">Připoj se ke stejné místnosti jako dětský telefon.</p>
+      <p id="parentInfo" class="small">Připoj se ke stejné místnosti jako dětský telefon. Mikrofon rodiče se nezapíná.</p>
       <audio id="remoteAudioParent" autoplay playsinline controls></audio>
     </div>
     <div class="log" id="parentLog"></div>
@@ -511,7 +517,15 @@ async function deleteCurrentRoom(){
 async function createPeer(role){
   const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
   pc.oniceconnectionstatechange=()=>{ const t=`WebRTC: ${pc.iceConnectionState}`; role==='child' ? $('connChild').textContent=t : $('parentInfo').textContent=t; if(role==='parent' && ['disconnected','failed','closed'].includes(pc.iceConnectionState)){ showParentLost('WebRTC spojení s dětským telefonem bylo přerušeno.'); } };
-  pc.ontrack=e=>{ const audio= role==='child' ? $('remoteAudioChild') : $('remoteAudioParent'); audio.srcObject=e.streams[0]; audio.play().catch(()=>{}); };
+  pc.ontrack=e=>{
+    if(role==='child'){
+      log('childLog','Příchozí zvuk z rodičovské jednotky je z důvodu soukromí ignorován.');
+      return;
+    }
+    const audio=$('remoteAudioParent');
+    audio.srcObject=e.streams[0];
+    audio.play().catch(()=>{});
+  };
   pc.onicecandidate=e=>{ if(e.candidate && state.db && state.room){ const path=`babyMonitor/${state.room}/candidates/${role}`; push(ref(state.db,path),e.candidate.toJSON()); } };
   return pc;
 }
@@ -544,6 +558,11 @@ async function startChild(){
   const pc=await createPeer('child');
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
   stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.getTransceivers().forEach(transceiver=>{
+    if(transceiver.sender?.track?.kind==='audio'){
+      transceiver.direction='sendonly';
+    }
+  });
   onValue(ref(state.db,`babyMonitor/${state.room}/answer`), async snap=>{ const ans=snap.val(); if(ans && !pc.currentRemoteDescription){ await pc.setRemoteDescription(ans); log('childLog','Rodič připojen – přijata odpověď.'); } });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/parent`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('childLog','ICE parent chyba: '+e.message); } });
   const offer=await pc.createOffer();
@@ -601,17 +620,20 @@ function lostBeep(){
 async function joinParent(){
   initFirebase(); state.room=$('parentRoom').value.trim(); state.childOwnsRoom=false; if(!state.room) return alert('Zadej kód místnosti.');
   const pc=await createPeer('parent');
-  const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-  mic.getTracks().forEach(t=>pc.addTrack(t,mic)); state.localStream=mic;
+  state.localStream=null;
   const offerSnap = await new Promise(resolve=>{ const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{ if(s.val()){ off(); resolve(s); } }); });
-  await pc.setRemoteDescription(offerSnap.val()); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
+  await pc.setRemoteDescription(offerSnap.val());
+  const answer=await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
   onChildAdded(ref(state.db,`babyMonitor/${state.room}/candidates/child`), async snap=>{ try{ await pc.addIceCandidate(snap.val()); }catch(e){ log('parentLog','ICE child chyba: '+e.message); } });
   onValue(ref(state.db,`babyMonitor/${state.room}/status`), snap=>{ const s=snap.val(); if(s){ state.lastParentStatusAt=Date.now(); clearParentLost(); updateParentStatus(s); } else { showParentLost('Místnost ve Firebase zmizela. Dětský telefon se nejspíš odpojil nebo stiskl Stop.'); } });
   state.lastParentStatusAt=Date.now();
   startParentWatchdog();
-  log('parentLog','Rodič připojen k místnosti '+state.room+'.');
+  $('parentInfo').textContent='Rodič připojen. Mikrofon rodiče je vypnutý – dítě rodiče neslyší.';
+  log('parentLog','Rodič připojen k místnosti '+state.room+' bez zapnutí mikrofonu.');
 }
-function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
+function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}. Mikrofon rodiče je vypnutý.`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
@@ -638,6 +660,21 @@ async function stopAll(){
 
 $('themeBtn').onclick=()=>{ const dark=document.body.dataset.theme!=='dark'; document.body.dataset.theme=dark?'dark':'light'; $('themeBtn').textContent=dark?'☀️':'🌙'; };
 
+function showBlackScreen(){
+  $('blackScreenOverlay').classList.add('active');
+  $('blackScreenOverlay').focus?.();
+}
+function hideBlackScreen(){
+  $('blackScreenOverlay').classList.remove('active');
+}
+$('blackScreenBtn').onclick=showBlackScreen;
+$('blackScreenOverlay').onclick=hideBlackScreen;
+$('blackScreenOverlay').onkeydown=e=>{
+  if(e.key==='Enter' || e.key===' ' || e.key==='Escape'){
+    e.preventDefault();
+    hideBlackScreen();
+  }
+};
 
 $('childTab').onclick=()=>setMode('child'); $('parentTab').onclick=()=>setMode('parent');
 $('startChild').onclick=()=>startChild().catch(e=>{ alert(e.message); log('childLog','Chyba: '+e.message); });
