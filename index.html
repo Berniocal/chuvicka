@@ -6,42 +6,117 @@
   <title>Chůvička – šum + detekce pláče + WebRTC</title>
   <style>
     :root{
-      --bg:#f6f7f4;--card:#ffffff;--text:#172018;--muted:#68746b;--line:#dfe6dd;
-      --primary:#4f8f63;--primary2:#dff0e4;--danger:#c94747;--warn:#b88223;--ok:#2f8f54;
-      --shadow:0 16px 45px rgba(25,40,30,.10);--radius:24px;
+      --bg:#fbf7ee;
+      --bg-soft:#f3eadc;
+      --card:#fffdf8;
+      --text:#3a342c;
+      --muted:#786f64;
+      --line:#eadfce;
+      --primary:#8bbf9f;
+      --primary-dark:#6fa987;
+      --primary2:#e7f2ea;
+      --danger:#d78383;
+      --danger-bg:#f8e1df;
+      --warn:#d5a66f;
+      --warn-bg:#fbefd9;
+      --ok:#76aa83;
+      --shadow:0 10px 28px rgba(80,62,42,.08);
+      --radius:18px;
     }
     [data-theme="dark"]{
-      --bg:#101510;--card:#182017;--text:#edf4ec;--muted:#a8b4a8;--line:#2d3a2c;
-      --primary:#7fcd91;--primary2:#223827;--danger:#ff7474;--warn:#f2bd65;--ok:#7ee09a;
-      --shadow:0 18px 50px rgba(0,0,0,.32);
+      --bg:#181714;
+      --bg-soft:#211f1b;
+      --card:#24231f;
+      --text:#f5efe6;
+      --muted:#c5baab;
+      --line:#39352d;
+      --primary:#9bc9ad;
+      --primary-dark:#87b99b;
+      --primary2:#2d3d32;
+      --danger:#e7a0a0;
+      --danger-bg:#402a2a;
+      --warn:#e3bd84;
+      --warn-bg:#3d3324;
+      --ok:#9bc9a7;
+      --shadow:0 12px 28px rgba(0,0,0,.22);
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top left,var(--primary2),transparent 38%),var(--bg);color:var(--text);min-height:100svh}
-    .wrap{max-width:1040px;margin:0 auto;padding:18px 14px 34px}
-    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
-    h1{font-size:clamp(24px,5vw,42px);line-height:1.05;margin:0;letter-spacing:-.04em}
-    .subtitle{color:var(--muted);margin:8px 0 0;font-size:15px;max-width:760px}
-    .card{background:color-mix(in srgb,var(--card) 92%,transparent);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin:14px 0;backdrop-filter:blur(10px)}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-    @media (max-width:760px){.grid,.grid3{grid-template-columns:1fr}.wrap{padding:14px 10px 28px}.card{padding:14px;border-radius:20px}}
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%,#e6f0e8 0,transparent 34%),
+        radial-gradient(circle at 90% 10%,#f8e7df 0,transparent 32%),
+        linear-gradient(180deg,var(--bg),var(--bg-soft));
+      color:var(--text);
+      min-height:100svh;
+    }
+    .wrap{max-width:720px;margin:0 auto;padding:14px 12px 22px}
+    header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+    h1{font-size:clamp(25px,6vw,38px);line-height:1.05;margin:0;font-weight:850;letter-spacing:-.035em}
+    h2{font-size:18px;margin:0 0 12px;font-weight:820;letter-spacing:-.02em}
+    .subtitle{color:var(--muted);margin:4px 0 0;font-size:13px;max-width:600px}
+    .card{
+      background:color-mix(in srgb,var(--card) 94%,transparent);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+      margin:10px 0;
+      backdrop-filter:blur(8px);
+    }
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    @media (max-width:680px){.grid,.grid3{grid-template-columns:1fr}.wrap{padding:10px 9px 20px}.card{padding:12px;border-radius:16px}}
     button,input,select{font:inherit}
-    button{border:0;border-radius:16px;padding:12px 15px;background:var(--primary2);color:var(--text);font-weight:700;cursor:pointer;transition:.15s transform,.15s opacity,.15s background}
-    button:active{transform:scale(.98)} button:disabled{opacity:.45;cursor:not-allowed}
-    .primary{background:var(--primary);color:#fff}.danger{background:#ffe0e0;color:#8d2020}.darkBtn{min-width:44px}
-    input,select{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--text);outline:none}
-    label{display:block;font-size:13px;font-weight:750;margin:0 0 7px;color:var(--muted)}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.row .auto{flex:0 0 auto}
-    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 11px;color:var(--muted);font-size:13px;font-weight:700}
-    .bigStatus{font-size:clamp(32px,9vw,72px);font-weight:900;letter-spacing:-.06em;margin:6px 0 2px}
+    button{
+      border:0;
+      border-radius:14px;
+      padding:10px 12px;
+      background:var(--primary2);
+      color:var(--text);
+      font-weight:760;
+      cursor:pointer;
+      transition:.15s transform,.15s opacity,.15s background;
+    }
+    button:hover{background:color-mix(in srgb,var(--primary2) 78%,#fff)}
+    button:active{transform:scale(.985)} button:disabled{opacity:.45;cursor:not-allowed}
+    .primary{background:var(--primary);color:#fff}.primary:hover{background:var(--primary-dark)}
+    .danger{background:var(--danger-bg);color:#8c4141}.darkBtn{min-width:42px;border-radius:999px;padding:9px 11px}
+    input,select{
+      width:100%;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:var(--card);
+      color:var(--text);
+      outline:none;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.5);
+    }
+    input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
+    input[type="range"]{padding:8px 0;accent-color:var(--primary);box-shadow:none;border:0;background:transparent}
+    label{display:block;font-size:12px;font-weight:780;margin:0 0 5px;color:var(--muted)}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.row .auto{flex:0 0 auto}
+    .pill{
+      display:inline-flex;align-items:center;gap:6px;
+      border:1px solid var(--line);
+      background:color-mix(in srgb,var(--primary2) 55%,var(--card));
+      border-radius:999px;
+      padding:6px 9px;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:760;
+    }
+    .bigStatus{font-size:clamp(30px,9vw,56px);font-weight:900;letter-spacing:-.055em;margin:4px 0 4px}
     .quiet{color:var(--ok)}.suspect{color:var(--warn)}.cry{color:var(--danger)}
-    .meter{height:16px;background:var(--primary2);border-radius:999px;overflow:hidden;border:1px solid var(--line)}
+    .meter{height:11px;background:var(--primary2);border-radius:999px;overflow:hidden;border:1px solid var(--line)}
     .bar{height:100%;width:0;background:var(--primary);border-radius:999px;transition:width .12s linear}.bar.warn{background:var(--warn)}.bar.danger{background:var(--danger)}
-    .small{font-size:13px;color:var(--muted);line-height:1.45}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    .hidden{display:none!important}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px}.tab{padding:15px;border:1px solid var(--line);background:var(--card)}.tab.active{background:var(--primary);color:#fff;border-color:transparent}
-    .log{max-height:180px;overflow:auto;background:rgba(0,0,0,.04);border-radius:16px;padding:10px;font-size:12px;color:var(--muted);white-space:pre-wrap}
-    [data-theme="dark"] .log{background:rgba(255,255,255,.05)}
-    details{border:1px solid var(--line);border-radius:18px;padding:12px;background:var(--card)} summary{cursor:pointer;font-weight:800}.warnbox{border-left:5px solid var(--warn);padding:10px 12px;background:color-mix(in srgb,var(--primary2) 70%,transparent);border-radius:14px}.dangerbox{border-left:5px solid var(--danger);padding:10px 12px;background:rgba(201,71,71,.10);border-radius:14px}
+    .small{font-size:13px;color:var(--muted);line-height:1.35;margin:8px 0 0}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .hidden{display:none!important}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tab{padding:11px 12px;border:1px solid var(--line);background:var(--card)}.tab.active{background:var(--primary);color:#fff;border-color:transparent;box-shadow:0 8px 18px rgba(111,169,135,.18)}
+    .log{max-height:0;overflow:hidden;font-size:0;line-height:0;padding:0;margin:0;border:0}
+    audio{width:100%;height:38px;margin-top:8px;border-radius:999px}
+    details{border:1px solid var(--line);border-radius:16px;padding:10px;background:var(--card)} summary{cursor:pointer;font-weight:800}
+    .warnbox{border-left:5px solid var(--warn);padding:9px 11px;background:var(--warn-bg);border-radius:12px}.dangerbox{border-left:5px solid var(--danger);padding:9px 11px;background:var(--danger-bg);border-radius:12px}
   </style>
 
 <link rel="manifest" href="manifest.json">
@@ -53,16 +128,17 @@
 <style>
   #blackScreenBtn{
     position:fixed;
-    right:12px;
-    bottom:12px;
+    right:10px;
+    bottom:10px;
     z-index:9998;
     border:0;
     border-radius:999px;
-    padding:10px 13px;
-    background:#111;
-    color:#fff;
-    font-weight:800;
-    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    padding:9px 11px;
+    background:#3b342d;
+    color:#fff7ed;
+    font-weight:760;
+    font-size:13px;
+    box-shadow:0 8px 22px rgba(0,0,0,.18);
   }
   #blackScreenOverlay{
     display:none;
@@ -74,9 +150,7 @@
     cursor:pointer;
     touch-action:manipulation;
   }
-  #blackScreenOverlay.active{
-    display:block;
-  }
+  #blackScreenOverlay.active{display:block;}
 </style>
 
 </head>
@@ -92,17 +166,17 @@
       src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAACBtZGF0AAAAAA=="
       type="video/mp4">
   </video>
-  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">⬛ Černá obrazovka</button>
+  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">Zhasnout obrazovku</button>
   <div id="blackScreenOverlay" role="button" tabindex="0" aria-label="Černá obrazovka. Klepnutím se vrátíš zpět."></div>
 <div class="wrap">
   <header>
     <div>
-      <h1>Chůvička</h1>
+      <h1>Chůvička</h1><p class="subtitle">Jednoduchý dohled, šum a upozornění na pláč.</p>
     </div>
     <button id="themeBtn" class="darkBtn" title="Tmavý režim">🌙</button>
   </header>
 <section class="card">
-    <h2>1) Režim</h2>
+    <h2>Režim</h2>
     <div class="tabs">
       <button id="childTab" class="tab active">👶 Dítě</button>
       <button id="parentTab" class="tab">👂 Rodič</button>
@@ -134,16 +208,16 @@
         </select>
       </div>
     </div>
-    <div style="margin-top:12px">
+    <div style="margin-top:10px">
       <label>Citlivost detektoru pláče</label>
       <input id="cryDetector" type="range" min="1" max="5" step="1" value="4">
       <p class="small" id="cryDetectorInfo">Vyšší citlivost = rychlejší reakce na pláč.</p>
     </div>
-    <div class="row" style="margin-top:14px">
-      <button id="startChild" class="primary">Spustit dětskou jednotku</button>
+    <div class="row" style="margin-top:10px">
+      <button id="startChild" class="primary">Spustit</button>
       <button id="stopChild" class="danger">Stop</button>
     </div>
-    <div class="grid" style="margin-top:16px">
+    <div class="grid" style="margin-top:12px">
       <div>
         <div class="pill">Stav dítěte</div>
         <div id="childStatus" class="bigStatus quiet">KLID</div>
@@ -164,11 +238,11 @@
     <div>
       <label>Kód místnosti</label><input id="parentRoom" class="mono" placeholder="opiš kód z dětského telefonu">
     </div>
-    <div class="row" style="margin-top:14px">
-      <button id="joinParent" class="primary">Připojit rodiče</button>
+    <div class="row" style="margin-top:10px">
+      <button id="joinParent" class="primary">Připojit</button>
       <button id="stopParent" class="danger">Odpojit</button>
     </div>
-    <div style="margin-top:16px">
+    <div style="margin-top:12px">
       <div class="pill">Aktuální stav</div>
       <div id="parentStatus" class="bigStatus quiet">ČEKÁM</div>
       <div class="meter"><div id="parentBar" class="bar"></div></div>
