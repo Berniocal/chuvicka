@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "chuvicka-pwa-v13";
+const CACHE_NAME = "chuvicka-pwa-v14";
 const ASSETS = [
   "./",
   "./index.html",
