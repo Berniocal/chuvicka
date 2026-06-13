@@ -696,9 +696,28 @@ async function joinParent(){
   clearParentLost();
 
   const pc=await createPeer('parent');
-  state.localStream=null;
 
-  // Rodič nezapíná mikrofon. Proto dítě rodiče neslyší, ale rodič má přijímat audio z nabídky dítěte.
+  // Kvůli některým mobilním prohlížečům vytvoříme i rodičovskou audio stopu,
+  // ale okamžitě ji vypneme. WebRTC se tak naváže stabilně,
+  // rodič slyší dítě, ale dítě rodiče neuslyší.
+  try{
+    const parentMic = await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:false
+    });
+    parentMic.getAudioTracks().forEach(track=>{
+      track.enabled = false;
+      pc.addTrack(track, parentMic);
+    });
+    state.localStream = parentMic;
+    log('parentLog','Rodičovský mikrofon byl přidán jen jako vypnutá stopa kvůli WebRTC.');
+  }catch(e){
+    // Kdyby rodič mikrofon nepovolil, zkusíme pokračovat jen příjmem zvuku.
+    state.localStream = null;
+    log('parentLog','Rodičovský mikrofon se nepodařilo přidat jako vypnutou stopu: '+e.message);
+  }
+
+  // Rodičovský mikrofon je vypnutý. Dítě rodiče neslyší, rodič přijímá audio z nabídky dítěte.
   const offerSnap = await new Promise(resolve=>{
     const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{
       if(s.val()){ off(); resolve(s); }
@@ -729,7 +748,7 @@ async function joinParent(){
   state.lastParentStatusAt=Date.now();
   startParentWatchdog();
   $('parentInfo').textContent='Rodič připojen. Mikrofon rodiče je vypnutý, ale zvuk z dětského telefonu se má přehrát v přehrávači níže.';
-  log('parentLog','Rodič připojen k místnosti '+state.room+' bez zapnutí rodičovského mikrofonu.');
+  log('parentLog','Rodič připojen k místnosti '+state.room+'. Rodičovská audio stopa je vypnutá.');
 
   // Uživatelské klepnutí na tlačítko Připojit dovolí v mobilech spustit audio kontext/přehrávání.
   const audio=$('remoteAudioParent');
