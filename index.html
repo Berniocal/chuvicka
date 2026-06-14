@@ -6,117 +6,42 @@
   <title>Chůvička – šum + detekce pláče + WebRTC</title>
   <style>
     :root{
-      --bg:#fbf7ee;
-      --bg-soft:#f3eadc;
-      --card:#fffdf8;
-      --text:#3a342c;
-      --muted:#786f64;
-      --line:#eadfce;
-      --primary:#8bbf9f;
-      --primary-dark:#6fa987;
-      --primary2:#e7f2ea;
-      --danger:#d78383;
-      --danger-bg:#f8e1df;
-      --warn:#d5a66f;
-      --warn-bg:#fbefd9;
-      --ok:#76aa83;
-      --shadow:0 10px 28px rgba(80,62,42,.08);
-      --radius:18px;
+      --bg:#f6f7f4;--card:#ffffff;--text:#172018;--muted:#68746b;--line:#dfe6dd;
+      --primary:#4f8f63;--primary2:#dff0e4;--danger:#c94747;--warn:#b88223;--ok:#2f8f54;
+      --shadow:0 16px 45px rgba(25,40,30,.10);--radius:24px;
     }
     [data-theme="dark"]{
-      --bg:#181714;
-      --bg-soft:#211f1b;
-      --card:#24231f;
-      --text:#f5efe6;
-      --muted:#c5baab;
-      --line:#39352d;
-      --primary:#9bc9ad;
-      --primary-dark:#87b99b;
-      --primary2:#2d3d32;
-      --danger:#e7a0a0;
-      --danger-bg:#402a2a;
-      --warn:#e3bd84;
-      --warn-bg:#3d3324;
-      --ok:#9bc9a7;
-      --shadow:0 12px 28px rgba(0,0,0,.22);
+      --bg:#101510;--card:#182017;--text:#edf4ec;--muted:#a8b4a8;--line:#2d3a2c;
+      --primary:#7fcd91;--primary2:#223827;--danger:#ff7474;--warn:#f2bd65;--ok:#7ee09a;
+      --shadow:0 18px 50px rgba(0,0,0,.32);
     }
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:
-        radial-gradient(circle at 10% 0%,#e6f0e8 0,transparent 34%),
-        radial-gradient(circle at 90% 10%,#f8e7df 0,transparent 32%),
-        linear-gradient(180deg,var(--bg),var(--bg-soft));
-      color:var(--text);
-      min-height:100svh;
-    }
-    .wrap{max-width:720px;margin:0 auto;padding:14px 12px 22px}
-    header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
-    h1{font-size:clamp(25px,6vw,38px);line-height:1.05;margin:0;font-weight:850;letter-spacing:-.035em}
-    h2{font-size:18px;margin:0 0 12px;font-weight:820;letter-spacing:-.02em}
-    .subtitle{color:var(--muted);margin:4px 0 0;font-size:13px;max-width:600px}
-    .card{
-      background:color-mix(in srgb,var(--card) 94%,transparent);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:14px;
-      margin:10px 0;
-      backdrop-filter:blur(8px);
-    }
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-    @media (max-width:680px){.grid,.grid3{grid-template-columns:1fr}.wrap{padding:10px 9px 20px}.card{padding:12px;border-radius:16px}}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top left,var(--primary2),transparent 38%),var(--bg);color:var(--text);min-height:100svh}
+    .wrap{max-width:1040px;margin:0 auto;padding:18px 14px 34px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:clamp(24px,5vw,42px);line-height:1.05;margin:0;letter-spacing:-.04em}
+    .subtitle{color:var(--muted);margin:8px 0 0;font-size:15px;max-width:760px}
+    .card{background:color-mix(in srgb,var(--card) 92%,transparent);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin:14px 0;backdrop-filter:blur(10px)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    @media (max-width:760px){.grid,.grid3{grid-template-columns:1fr}.wrap{padding:14px 10px 28px}.card{padding:14px;border-radius:20px}}
     button,input,select{font:inherit}
-    button{
-      border:0;
-      border-radius:14px;
-      padding:10px 12px;
-      background:var(--primary2);
-      color:var(--text);
-      font-weight:760;
-      cursor:pointer;
-      transition:.15s transform,.15s opacity,.15s background;
-    }
-    button:hover{background:color-mix(in srgb,var(--primary2) 78%,#fff)}
-    button:active{transform:scale(.985)} button:disabled{opacity:.45;cursor:not-allowed}
-    .primary{background:var(--primary);color:#fff}.primary:hover{background:var(--primary-dark)}
-    .danger{background:var(--danger-bg);color:#8c4141}.darkBtn{min-width:42px;border-radius:999px;padding:9px 11px}
-    input,select{
-      width:100%;
-      padding:10px 12px;
-      border:1px solid var(--line);
-      border-radius:14px;
-      background:var(--card);
-      color:var(--text);
-      outline:none;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.5);
-    }
-    input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
-    input[type="range"]{padding:8px 0;accent-color:var(--primary);box-shadow:none;border:0;background:transparent}
-    label{display:block;font-size:12px;font-weight:780;margin:0 0 5px;color:var(--muted)}
-    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.row .auto{flex:0 0 auto}
-    .pill{
-      display:inline-flex;align-items:center;gap:6px;
-      border:1px solid var(--line);
-      background:color-mix(in srgb,var(--primary2) 55%,var(--card));
-      border-radius:999px;
-      padding:6px 9px;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:760;
-    }
-    .bigStatus{font-size:clamp(30px,9vw,56px);font-weight:900;letter-spacing:-.055em;margin:4px 0 4px}
+    button{border:0;border-radius:16px;padding:12px 15px;background:var(--primary2);color:var(--text);font-weight:700;cursor:pointer;transition:.15s transform,.15s opacity,.15s background}
+    button:active{transform:scale(.98)} button:disabled{opacity:.45;cursor:not-allowed}
+    .primary{background:var(--primary);color:#fff}.danger{background:#ffe0e0;color:#8d2020}.darkBtn{min-width:44px}
+    input,select{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--text);outline:none}
+    label{display:block;font-size:13px;font-weight:750;margin:0 0 7px;color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.row .auto{flex:0 0 auto}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 11px;color:var(--muted);font-size:13px;font-weight:700}
+    .bigStatus{font-size:clamp(32px,9vw,72px);font-weight:900;letter-spacing:-.06em;margin:6px 0 2px}
     .quiet{color:var(--ok)}.suspect{color:var(--warn)}.cry{color:var(--danger)}
-    .meter{height:11px;background:var(--primary2);border-radius:999px;overflow:hidden;border:1px solid var(--line)}
+    .meter{height:16px;background:var(--primary2);border-radius:999px;overflow:hidden;border:1px solid var(--line)}
     .bar{height:100%;width:0;background:var(--primary);border-radius:999px;transition:width .12s linear}.bar.warn{background:var(--warn)}.bar.danger{background:var(--danger)}
-    .small{font-size:13px;color:var(--muted);line-height:1.35;margin:8px 0 0}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    .hidden{display:none!important}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tab{padding:11px 12px;border:1px solid var(--line);background:var(--card)}.tab.active{background:var(--primary);color:#fff;border-color:transparent;box-shadow:0 8px 18px rgba(111,169,135,.18)}
-    .log{max-height:0;overflow:hidden;font-size:0;line-height:0;padding:0;margin:0;border:0}
-    audio{width:100%;height:38px;margin-top:8px;border-radius:999px}
-    details{border:1px solid var(--line);border-radius:16px;padding:10px;background:var(--card)} summary{cursor:pointer;font-weight:800}
-    .warnbox{border-left:5px solid var(--warn);padding:9px 11px;background:var(--warn-bg);border-radius:12px}.dangerbox{border-left:5px solid var(--danger);padding:9px 11px;background:var(--danger-bg);border-radius:12px}
+    .small{font-size:13px;color:var(--muted);line-height:1.45}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .hidden{display:none!important}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px}.tab{padding:15px;border:1px solid var(--line);background:var(--card)}.tab.active{background:var(--primary);color:#fff;border-color:transparent}
+    .log{max-height:180px;overflow:auto;background:rgba(0,0,0,.04);border-radius:16px;padding:10px;font-size:12px;color:var(--muted);white-space:pre-wrap}
+    [data-theme="dark"] .log{background:rgba(255,255,255,.05)}
+    details{border:1px solid var(--line);border-radius:18px;padding:12px;background:var(--card)} summary{cursor:pointer;font-weight:800}.warnbox{border-left:5px solid var(--warn);padding:10px 12px;background:color-mix(in srgb,var(--primary2) 70%,transparent);border-radius:14px}.dangerbox{border-left:5px solid var(--danger);padding:10px 12px;background:rgba(201,71,71,.10);border-radius:14px}
   </style>
 
 <link rel="manifest" href="manifest.json">
@@ -128,17 +53,16 @@
 <style>
   #blackScreenBtn{
     position:fixed;
-    right:10px;
-    bottom:10px;
+    right:12px;
+    bottom:12px;
     z-index:9998;
     border:0;
     border-radius:999px;
-    padding:9px 11px;
-    background:#3b342d;
-    color:#fff7ed;
-    font-weight:760;
-    font-size:13px;
-    box-shadow:0 8px 22px rgba(0,0,0,.18);
+    padding:10px 13px;
+    background:#111;
+    color:#fff;
+    font-weight:800;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
   }
   #blackScreenOverlay{
     display:none;
@@ -150,7 +74,9 @@
     cursor:pointer;
     touch-action:manipulation;
   }
-  #blackScreenOverlay.active{display:block;}
+  #blackScreenOverlay.active{
+    display:block;
+  }
 </style>
 
 </head>
@@ -166,17 +92,17 @@
       src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAACBtZGF0AAAAAA=="
       type="video/mp4">
   </video>
-  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">Zhasnout obrazovku</button>
+  <button id="blackScreenBtn" type="button" title="Zčernit obrazovku pro úsporu baterie">⬛ Černá obrazovka</button>
   <div id="blackScreenOverlay" role="button" tabindex="0" aria-label="Černá obrazovka. Klepnutím se vrátíš zpět."></div>
 <div class="wrap">
   <header>
     <div>
-      <h1>Chůvička</h1><p class="subtitle">Jednoduchý dohled, šum a upozornění na pláč.</p>
+      <h1>Chůvička</h1>
     </div>
     <button id="themeBtn" class="darkBtn" title="Tmavý režim">🌙</button>
   </header>
 <section class="card">
-    <h2>Režim</h2>
+    <h2>1) Režim</h2>
     <div class="tabs">
       <button id="childTab" class="tab active">👶 Dítě</button>
       <button id="parentTab" class="tab">👂 Rodič</button>
@@ -208,16 +134,16 @@
         </select>
       </div>
     </div>
-    <div style="margin-top:10px">
+    <div style="margin-top:12px">
       <label>Citlivost detektoru pláče</label>
       <input id="cryDetector" type="range" min="1" max="5" step="1" value="4">
       <p class="small" id="cryDetectorInfo">Vyšší citlivost = rychlejší reakce na pláč.</p>
     </div>
-    <div class="row" style="margin-top:10px">
-      <button id="startChild" class="primary">Spustit</button>
+    <div class="row" style="margin-top:14px">
+      <button id="startChild" class="primary">Spustit dětskou jednotku</button>
       <button id="stopChild" class="danger">Stop</button>
     </div>
-    <div class="grid" style="margin-top:12px">
+    <div class="grid" style="margin-top:16px">
       <div>
         <div class="pill">Stav dítěte</div>
         <div id="childStatus" class="bigStatus quiet">KLID</div>
@@ -225,10 +151,10 @@
         <p id="childInfo" class="small">Nejprve spusť dětskou jednotku. Rodiče bude nutné potvrdit na dětském telefonu.</p>
       </div>
       <div>
-        <div class="pill">Rodičovský telefon</div>
-        <p id="connChild" class="small">Čekám na rodiče…</p>
-        <audio id="remoteAudioChild" class="hidden" autoplay playsinline></audio>
-        <div class="log hidden" id="childLog"></div>
+        <div class="pill">WebRTC / rodič</div>
+        <p id="connChild" class="small">Nepřipojeno.</p>
+        <audio id="remoteAudioChild" autoplay playsinline></audio>
+        <div class="log" id="childLog"></div>
       </div>
     </div>
   </section>
@@ -238,18 +164,18 @@
     <div>
       <label>Kód místnosti</label><input id="parentRoom" class="mono" placeholder="opiš kód z dětského telefonu">
     </div>
-    <div class="row" style="margin-top:10px">
-      <button id="joinParent" class="primary">Připojit</button>
+    <div class="row" style="margin-top:14px">
+      <button id="joinParent" class="primary">Připojit rodiče</button>
       <button id="stopParent" class="danger">Odpojit</button>
     </div>
-    <div style="margin-top:12px">
+    <div style="margin-top:16px">
       <div class="pill">Aktuální stav</div>
       <div id="parentStatus" class="bigStatus quiet">ČEKÁM</div>
       <div class="meter"><div id="parentBar" class="bar"></div></div>
       <p id="parentInfo" class="small">Připoj se ke stejné místnosti jako dětský telefon. Dětský telefon musí připojení schválit.</p>
       <audio id="remoteAudioParent" autoplay playsinline controls></audio>
     </div>
-    <div class="log hidden" id="parentLog"></div>
+    <div class="log" id="parentLog"></div>
   </section>
 </div>
 
@@ -355,12 +281,7 @@ const $ = id => document.getElementById(id);
 const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, parentConnectedAt:0, webrtcFailed:false, parentRequestId:null, approvalUnsub:null };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
-function log(box,msg){
-  const el=$(box);
-  if(!el) return;
-  // Servisní log necháváme jen skrytý pro případné ladění, uživateli se nezobrazuje.
-  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500);
-}
+function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
 function clsStatus(el, st){ el.className='bigStatus '+(st==='cry'?'cry':st==='suspect'?'suspect':'quiet'); }
 function roomCode(){ return String(Math.floor(10000+Math.random()*90000)); }
 const FIREBASE_CONFIG = {
@@ -583,26 +504,17 @@ function analyzeFrame(){
 function requestNext(){ state.loop=requestAnimationFrame(analyzeFrame); }
 let lastFb=0,lastFbSt='';
 function throttleFirebase(st,score,level){ const now=Date.now(); if(!state.room||!state.db) return; if(st!==lastFbSt || now-lastFb>1000){ lastFb=now; lastFbSt=st; update(ref(state.db,`babyMonitor/${state.room}/status`),{state:st,score:+score.toFixed(3),level:+level.toFixed(3),updatedAt:serverTimestamp()}); } }
-function updateChildUi(st,score,level,diff){
-  $('childStatus').textContent=statusText(st);
-  clsStatus($('childStatus'),st);
-  const bar=$('childBar');
-  bar.style.width=Math.round(score*100)+'%';
-  bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':'');
-  if(state.calibrating) return;
-  $('childInfo').textContent =
-    st==='cry' ? 'Detekován pláč.' :
-    st==='suspect' ? 'Dítě vydává zvýšené zvuky.' :
-    'Dítě je v klidu.';
-}
+function updateChildUi(st,score,level,diff){ $('childStatus').textContent=statusText(st); clsStatus($('childStatus'),st); const bar=$('childBar'); bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('childInfo').textContent=`Skóre pláče: ${(score*100).toFixed(0)} %, hlasitost: ${(level*100).toFixed(0)} %, rozdíl od šumu: ${(diff*100).toFixed(1)} %`; }
+
 
 async function deleteCurrentRoom(){
   if(state.db && state.room && state.childOwnsRoom){
     try{ await state.disconnectRef?.cancel?.(); }catch{}
     try{
       await remove(ref(state.db,`babyMonitor/${state.room}`));
+      log('childLog','Místnost byla smazána z Firebase: '+state.room);
     }
-    catch(e){ console.warn('Místnost nešla smazat:', e); }
+    catch(e){ console.warn('Místnost nešla smazat:', e); log('childLog','Místnost nešla smazat: '+e.message); }
   }
 }
 
@@ -659,7 +571,7 @@ function setupChildApprovalListener(offer){
           approvedAt:serverTimestamp()
         });
         await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
-        $('connChild').textContent='Rodič byl schválen. Připojuje se…';
+        $('connChild').textContent='Rodič byl schválen. Čekám na navázání zvuku…';
         log('childLog','Rodičovský telefon byl schválen.');
       } else {
         await update(ref(state.db,`babyMonitor/${state.room}/parentRequest`),{
@@ -680,38 +592,48 @@ async function createPeer(role){
   const pc = new RTCPeerConnection(rtcCfg); state.pc=pc;
 
   pc.onconnectionstatechange=()=>{
-    if(role==='child'){
-      if(pc.connectionState==='connected') $('connChild').textContent='Rodič připojen ✅';
-      else if(['failed','closed','disconnected'].includes(pc.connectionState)) $('connChild').textContent='Rodič odpojen.';
-      else $('connChild').textContent='Rodič se připojuje…';
-    } else {
-      if(pc.connectionState==='connected') $('parentInfo').textContent='Připojeno k dětské jednotce ✅';
+    const t=`WebRTC: ${pc.connectionState}`;
+    if(role==='child') $('connChild').textContent=t;
+    else $('parentInfo').textContent=t;
+
+    // „disconnected“ bývá na mobilech často jen krátký výpadek při uspání sítě.
+    // Za ztrátu spojení bereme až failed/closed, nebo dlouhé disconnected.
+    if(role==='parent'){
+      if(['connected','completed'].includes(pc.iceConnectionState) || pc.connectionState==='connected'){
+        state.parentConnectedAt=Date.now();
+        state.webrtcFailed=false;
+      }
       if(['failed','closed'].includes(pc.connectionState)){
         state.webrtcFailed=true;
-        showParentLost('Spojení s dětským telefonem bylo ztraceno.');
+        showParentLost('WebRTC spojení s dětským telefonem bylo ztraceno.');
       }
     }
   };
 
   pc.oniceconnectionstatechange=()=>{
+    const t=`WebRTC ICE: ${pc.iceConnectionState}`;
+    if(role==='child') $('connChild').textContent=t;
+    else $('parentInfo').textContent=t;
+
     if(role==='parent'){
       if(['connected','completed'].includes(pc.iceConnectionState)){
         state.parentConnectedAt=Date.now();
         state.webrtcFailed=false;
-        $('parentInfo').textContent='Připojeno k dětské jednotce ✅';
       }
       if(pc.iceConnectionState==='failed'){
         state.webrtcFailed=true;
-        showParentLost('Spojení s dětským telefonem selhalo.');
+        showParentLost('WebRTC spojení s dětským telefonem selhalo.');
       }
       if(pc.iceConnectionState==='disconnected'){
+        const sinceConnect = state.parentConnectedAt ? Date.now()-state.parentConnectedAt : 0;
+        // Teprve delší disconnected bereme jako skutečný pád.
         setTimeout(()=>{
           if(state.pc===pc && pc.iceConnectionState==='disconnected'){
             const wasConnectedLongEnough = state.parentConnectedAt && Date.now()-state.parentConnectedAt>12000;
             if(wasConnectedLongEnough){
-              showParentLost('Spojení s dětským telefonem bylo delší dobu přerušené.');
+              showParentLost('WebRTC spojení s dětským telefonem bylo delší dobu přerušené.');
             } else {
-              $('parentInfo').textContent='Spojení se navazuje… Pokud neslyšíš zvuk, klepni na přehrávač níže.';
+              $('parentInfo').textContent='WebRTC se ještě navazuje… Pokud neslyšíš zvuk, klepni na přehrávač níže.';
             }
           }
         }, 8000);
@@ -721,16 +643,19 @@ async function createPeer(role){
 
   pc.ontrack=e=>{
     if(role==='child'){
+      log('childLog','Příchozí zvuk z rodičovské jednotky je z důvodu soukromí ignorován.');
       return;
     }
     const audio=$('remoteAudioParent');
     audio.srcObject=e.streams[0];
     audio.muted=false;
     audio.volume=1;
+    log('parentLog','Dorazila audio stopa od dětského telefonu.');
     const p=audio.play();
     if(p && typeof p.catch==='function'){
       p.catch(()=>{
-        $('parentInfo').textContent='Zvuk je připravený. Klepni na tlačítko Play v přehrávači.';
+        $('parentInfo').textContent='Zvuk dorazil, ale prohlížeč blokuje automatické přehrání. Klepni na tlačítko Play v přehrávači.';
+        log('parentLog','Prohlížeč zablokoval automatické přehrání zvuku – klepni na Play.');
       });
     }
   };
@@ -797,11 +722,11 @@ async function startChild(){
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
   state.childStarted = true;
   window.keepAwakeMaintain?.();
-  $('connChild').textContent='Čekám na rodiče. Kód pro rodiče: '+state.room;
-  
+  $('connChild').textContent='Místnost vytvořena. Kód pro rodiče: '+state.room+'. Rodiče bude nutné potvrdit na dětském telefonu.';
+  log('childLog','Dětská jednotka spuštěna. Čekám na žádost rodiče.');
 }
 
-function showParentLost(reason='Dětský telefon se odpojil.'){
+function showParentLost(reason='Dětský telefon se odpojil nebo se smazala místnost.'){
   if(state.parentLostNotified) return;
   state.parentLostNotified=true;
   $('parentStatus').textContent='SPOJENÍ ZTRACENO';
@@ -810,6 +735,7 @@ function showParentLost(reason='Dětský telefon se odpojil.'){
   bar.style.width='100%';
   bar.className='bar danger';
   $('parentInfo').textContent=reason;
+  log('parentLog','Spojení ztraceno: '+reason);
   lostBeep();
 }
 function clearParentLost(){
@@ -849,7 +775,7 @@ async function joinParent(){
 
   const roomSnap = await get(ref(state.db,`babyMonitor/${state.room}`));
   if(!roomSnap.exists()){
-    throw new Error('Tato místnost neexistuje. Nejdřív spusť dětskou jednotku.');
+    throw new Error('Tato místnost ve Firebase neexistuje. Nejdřív spusť dětskou jednotku.');
   }
 
   state.parentRequestId = makeRequestId();
@@ -911,15 +837,21 @@ async function joinParent(){
     catch(e){ log('parentLog','ICE child chyba: '+e.message); }
   });
 
+  onValue(ref(state.db,`babyMonitor/${state.room}/mic`), snap=>{
+    const m=snap.val();
+    if(m){
+      log('parentLog',`Mikrofon dítěte: ready=${!!m.ready}, enabled=${!!m.enabled}, muted=${!!m.muted}`);
+    }
+  });
 
   onValue(ref(state.db,`babyMonitor/${state.room}/status`), snap=>{
     const s=snap.val();
     if(s){ state.lastParentStatusAt=Date.now(); clearParentLost(); updateParentStatus(s); }
-    else { showParentLost('Dětský telefon se odpojil nebo stiskl Stop.'); }
+    else { showParentLost('Místnost ve Firebase zmizela. Dětský telefon se nejspíš odpojil nebo stiskl Stop.'); }
   });
   state.lastParentStatusAt=Date.now();
   startParentWatchdog();
-  $('parentInfo').textContent='Připojeno. Zvuk z dětského telefonu se přehrává níže.';
+  $('parentInfo').textContent='Rodič připojen. Mikrofon rodiče je vypnutý, ale zvuk z dětského telefonu se má přehrát v přehrávači níže.';
   log('parentLog','Rodič připojen k místnosti '+state.room+'. Rodičovská audio stopa je vypnutá.');
 
   // Uživatelské klepnutí na tlačítko Připojit dovolí v mobilech spustit audio kontext/přehrávání.
@@ -928,24 +860,7 @@ async function joinParent(){
   audio.volume=1;
   audio.play?.().catch(()=>{});
 }
-function updateParentStatus(s){
-  const st=s.state||'quiet';
-  $('parentStatus').textContent=statusText(st);
-  clsStatus($('parentStatus'),st);
-  const bar=$('parentBar');
-  const score=s.score||0;
-  bar.style.width=Math.round(score*100)+'%';
-  bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':'');
-  $('parentInfo').textContent =
-    st==='cry' ? 'Dítě pravděpodobně pláče.' :
-    st==='suspect' ? 'Dítě vydává zvýšené zvuky.' :
-    'Dítě je v klidu.';
-  if(st==='cry'&&!state.alarmed){
-    state.alarmed=true;
-    alarm();
-    setTimeout(()=>state.alarmed=false,5000);
-  }
-}
+function updateParentStatus(s){ const st=s.state||'quiet'; $('parentStatus').textContent=statusText(st); clsStatus($('parentStatus'),st); const bar=$('parentBar'); const score=s.score||0; bar.style.width=Math.round(score*100)+'%'; bar.className='bar '+(st==='cry'?'danger':st==='suspect'?'warn':''); $('parentInfo').textContent=`Skóre: ${(score*100).toFixed(0)} %, hlasitost: ${((s.level||0)*100).toFixed(0)} %, poslední aktualizace: ${new Date().toLocaleTimeString()}. Mikrofon rodiče je vypnutý; přijímá se jen zvuk dítěte.`; if(st==='cry'&&!state.alarmed){ state.alarmed=true; alarm(); setTimeout(()=>state.alarmed=false,5000); } }
 function alarm(){ beep(); }
 function beep(){ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.03); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.55); o.stop(ctx.currentTime+.6); }
 async function stopAll(){
@@ -974,7 +889,7 @@ async function stopAll(){
   state.childOwnsRoom=false;
   state.disconnectRef=null;
   state.parentRequestId=null;
-  $('connChild').textContent='Zastaveno.';
+  $('connChild').textContent='Zastaveno. Místnost byla smazána z Firebase, pokud běžela dětská jednotka.';
   $('parentInfo').textContent='Odpojeno.';
 }
 
