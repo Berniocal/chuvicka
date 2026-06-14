@@ -148,7 +148,7 @@
         <div class="pill">Stav dítěte</div>
         <div id="childStatus" class="bigStatus quiet">KLID</div>
         <div class="meter"><div id="childBar" class="bar"></div></div>
-        <p id="childInfo" class="small">Nejprve spusť dětskou jednotku. Rodiče bude nutné potvrdit na dětském telefonu.</p>
+        <p id="childInfo" class="small">Nejprve spusť dětskou jednotku a nech 10 sekund kalibraci šumu.</p>
       </div>
       <div>
         <div class="pill">WebRTC / rodič</div>
@@ -172,7 +172,7 @@
       <div class="pill">Aktuální stav</div>
       <div id="parentStatus" class="bigStatus quiet">ČEKÁM</div>
       <div class="meter"><div id="parentBar" class="bar"></div></div>
-      <p id="parentInfo" class="small">Připoj se ke stejné místnosti jako dětský telefon. Dětský telefon musí připojení schválit.</p>
+      <p id="parentInfo" class="small">Připoj se ke stejné místnosti jako dětský telefon. Mikrofon rodiče se nezapíná.</p>
       <audio id="remoteAudioParent" autoplay playsinline controls></audio>
     </div>
     <div class="log" id="parentLog"></div>
@@ -278,7 +278,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, set, update, get, onValue, push, onChildAdded, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const $ = id => document.getElementById(id);
-const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, parentConnectedAt:0, webrtcFailed:false, parentRequestId:null, approvalUnsub:null };
+const state = { mode:'child', app:null, db:null, room:null, pc:null, localStream:null, audioCtx:null, noiseNode:null, noiseGain:null, analyser:null, data:null, baseline:null, calibrating:false, calFrames:0, cryMs:0, lastFrame:0, loop:null, unsub:[], alarmed:false, childOwnsRoom:false, disconnectRef:null, realBuffers:{}, realBufferPromises:{}, startSeq:0, childStarted:false, parentConnectedAt:0, webrtcFailed:false };
 const rtcCfg = { iceServers: [{urls:'stun:stun.l.google.com:19302'}, {urls:'stun:stun1.l.google.com:19302'}] };
 
 function log(box,msg){ const el=$(box); el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0,2500); }
@@ -509,83 +509,9 @@ function updateChildUi(st,score,level,diff){ $('childStatus').textContent=status
 
 async function deleteCurrentRoom(){
   if(state.db && state.room && state.childOwnsRoom){
-    try{ await state.disconnectRef?.cancel?.(); }catch{}
-    try{
-      await remove(ref(state.db,`babyMonitor/${state.room}`));
-      log('childLog','Místnost byla smazána z Firebase: '+state.room);
-    }
-    catch(e){ console.warn('Místnost nešla smazat:', e); log('childLog','Místnost nešla smazat: '+e.message); }
+    try{ await remove(ref(state.db,`babyMonitor/${state.room}`)); }
+    catch(e){ console.warn('Místnost nešla smazat:', e); }
   }
-}
-
-
-function makeRequestId(){
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
-}
-
-async function waitForValue(path, predicate, timeoutMs, timeoutMessage){
-  return new Promise((resolve, reject)=>{
-    let done=false;
-    let timer=null;
-    const unsub=onValue(ref(state.db,path), snap=>{
-      if(done) return;
-      const val=snap.val();
-      if(predicate(val)){
-        done=true;
-        if(timer) clearTimeout(timer);
-        unsub();
-        resolve(val);
-      }
-    });
-    if(timeoutMs){
-      timer=setTimeout(()=>{
-        if(done) return;
-        done=true;
-        unsub();
-        reject(new Error(timeoutMessage || 'Vypršel čas čekání.'));
-      }, timeoutMs);
-    }
-  });
-}
-
-function setupChildApprovalListener(offer){
-  if(state.approvalUnsub){
-    try{ state.approvalUnsub(); }catch{}
-    state.approvalUnsub=null;
-  }
-  state.approvalUnsub = onValue(ref(state.db,`babyMonitor/${state.room}/parentRequest`), async snap=>{
-    const req=snap.val();
-    if(!req || !req.id || req.approved || req.rejected) return;
-
-    const ok = confirm(
-      'Rodičovský telefon žádá o připojení k dětské jednotce.\n\n' +
-      'Povolit připojení?\n\n' +
-      'Když dáš Storno, rodič se nepřipojí.'
-    );
-
-    try{
-      if(ok){
-        await update(ref(state.db,`babyMonitor/${state.room}/parentRequest`),{
-          approved:true,
-          rejected:false,
-          approvedAt:serverTimestamp()
-        });
-        await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
-        $('connChild').textContent='Rodič byl schválen. Čekám na navázání zvuku…';
-        log('childLog','Rodičovský telefon byl schválen.');
-      } else {
-        await update(ref(state.db,`babyMonitor/${state.room}/parentRequest`),{
-          approved:false,
-          rejected:true,
-          rejectedAt:serverTimestamp()
-        });
-        $('connChild').textContent='Žádost rodiče byla odmítnuta.';
-        log('childLog','Rodičovský telefon byl odmítnut.');
-      }
-    }catch(e){
-      log('childLog','Schválení rodiče se nepodařilo uložit: '+e.message);
-    }
-  });
 }
 
 async function createPeer(role){
@@ -715,15 +641,11 @@ async function startChild(){
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
   await pc.setLocalDescription(offer);
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
-
-  // Nabídku WebRTC do Firebase zapíšeme až po schválení rodiče na dětském telefonu.
-  setupChildApprovalListener({ type: offer.type, sdp: offer.sdp });
-
+  await set(ref(state.db,`babyMonitor/${state.room}/offer`), { type: offer.type, sdp: offer.sdp });
   if(myStartSeq !== state.startSeq){ pc.close(); await stopNoisePlayback(); stream.getTracks().forEach(t=>t.stop()); await deleteCurrentRoom(); return; }
   state.childStarted = true;
   window.keepAwakeMaintain?.();
-  $('connChild').textContent='Místnost vytvořena. Kód pro rodiče: '+state.room+'. Rodiče bude nutné potvrdit na dětském telefonu.';
-  log('childLog','Dětská jednotka spuštěna. Čekám na žádost rodiče.');
+  $('connChild').textContent='Místnost vytvořena. Opiš kód do rodičovského telefonu: '+state.room; log('childLog','Dětská jednotka spuštěna.');
 }
 
 function showParentLost(reason='Dětský telefon se odpojil nebo se smazala místnost.'){
@@ -773,31 +695,6 @@ async function joinParent(){
   state.webrtcFailed=false;
   clearParentLost();
 
-  const roomSnap = await get(ref(state.db,`babyMonitor/${state.room}`));
-  if(!roomSnap.exists()){
-    throw new Error('Tato místnost ve Firebase neexistuje. Nejdřív spusť dětskou jednotku.');
-  }
-
-  state.parentRequestId = makeRequestId();
-  await set(ref(state.db,`babyMonitor/${state.room}/parentRequest`),{
-    id:state.parentRequestId,
-    requestedAt:serverTimestamp(),
-    approved:false,
-    rejected:false
-  });
-  $('parentInfo').textContent='Žádost o připojení odeslána. Potvrď ji na dětském telefonu.';
-  log('parentLog','Čekám na schválení na dětském telefonu.');
-
-  const approvedReq = await waitForValue(
-    `babyMonitor/${state.room}/parentRequest`,
-    req => req && req.id===state.parentRequestId && (req.approved || req.rejected),
-    60000,
-    'Dětský telefon nepotvrdil připojení do 60 sekund.'
-  );
-  if(approvedReq.rejected){
-    throw new Error('Dětský telefon připojení rodiče odmítl.');
-  }
-
   const pc=await createPeer('parent');
 
   // Kvůli některým mobilním prohlížečům vytvoříme i rodičovskou audio stopu,
@@ -821,13 +718,12 @@ async function joinParent(){
   }
 
   // Rodičovský mikrofon je vypnutý. Dítě rodiče neslyší, rodič přijímá audio z nabídky dítěte.
-  const offerVal = await waitForValue(
-    `babyMonitor/${state.room}/offer`,
-    offer => !!offer,
-    60000,
-    'Dítě schválilo rodiče, ale WebRTC nabídka se nevytvořila.'
-  );
-  await pc.setRemoteDescription(offerVal);
+  const offerSnap = await new Promise(resolve=>{
+    const off=onValue(ref(state.db,`babyMonitor/${state.room}/offer`), s=>{
+      if(s.val()){ off(); resolve(s); }
+    });
+  });
+  await pc.setRemoteDescription(offerSnap.val());
   const answer=await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await set(ref(state.db,`babyMonitor/${state.room}/answer`), { type: answer.type, sdp: answer.sdp });
@@ -870,14 +766,7 @@ async function stopAll(){
   cancelAnimationFrame(state.loop);
   clearInterval(state.parentWatchdog);
   state.parentWatchdog=null;
-  if(state.approvalUnsub){
-    try{ state.approvalUnsub(); }catch{}
-    state.approvalUnsub=null;
-  }
   await deleteCurrentRoom();
-  if(!state.childOwnsRoom && state.db && state.room && state.parentRequestId){
-    try{ await remove(ref(state.db,`babyMonitor/${state.room}/parentRequest`)); }catch{}
-  }
   state.localStream?.getTracks().forEach(t=>t.stop());
   state.pc?.close();
   await stopNoisePlayback();
@@ -888,8 +777,7 @@ async function stopAll(){
   state.noiseGain=null;
   state.childOwnsRoom=false;
   state.disconnectRef=null;
-  state.parentRequestId=null;
-  $('connChild').textContent='Zastaveno. Místnost byla smazána z Firebase, pokud běžela dětská jednotka.';
+  $('connChild').textContent='Zastaveno.';
   $('parentInfo').textContent='Odpojeno.';
 }
 
